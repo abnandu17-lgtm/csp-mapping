@@ -1,9 +1,14 @@
 import io
+import json
+import os
 import re
+import time
+from pathlib import Path
 
 import pandas as pd
 import streamlit as st
 from pypdf import PdfReader
+from google import genai
 
 from reportlab.lib import colors
 from reportlab.lib.enums import TA_CENTER
@@ -65,7 +70,7 @@ COS = [
 
 
 # ============================================================
-# PROGRAM OUTCOMES
+# FIXED PROGRAM OUTCOMES
 # ============================================================
 
 POS = [
@@ -117,7 +122,7 @@ POS = [
 
 
 # ============================================================
-# PROGRAM SPECIFIC OUTCOMES
+# FIXED PROGRAM SPECIFIC OUTCOMES
 # ============================================================
 
 PSOS = [
@@ -137,7 +142,7 @@ PSOS = [
 
 
 # ============================================================
-# KNOWLEDGE PROFILE
+# FIXED KNOWLEDGE PROFILE
 # ============================================================
 
 WKS = [
@@ -181,8 +186,14 @@ WKS = [
 
 
 # ============================================================
-# FIXED WK → PO/PSO MATRIX
+# FIXED WK -> PO/PSO MATRIX
 # ============================================================
+
+HEADERS = [f"PO{i}" for i in range(1, 12)] + [
+    "PSO1",
+    "PSO2",
+    "PSO3",
+]
 
 FIXED_WK_MATRIX = [
     [2, 2, "-", "-", "-", 1, "-", "-", "-", "-", "-", "-", "-", "-"],
@@ -196,17 +207,9 @@ FIXED_WK_MATRIX = [
     ["-", "-", "-", "-", "-", "-", 3, "-", "-", "-", "-", "-", "-", "-"],
 ]
 
-FIXED_WK_MATRIX = [
-    [
-        str(x).strip() if isinstance(x, str) else x
-        for x in row
-    ]
-    for row in FIXED_WK_MATRIX
-]
-
 
 # ============================================================
-# SDGs
+# FIXED SDG 1-17 LIST
 # ============================================================
 
 SDGS = {
@@ -230,101 +233,44 @@ SDGS = {
 }
 
 
-HEADERS = (
-    [f"PO{i}" for i in range(1, 12)]
-    + ["PSO1", "PSO2", "PSO3"]
-)
-
-
 # ============================================================
-# EXTRACT PDF TEXT
+# PDF EXTRACTION
 # ============================================================
 
-def extract_text(uploaded):
-
-    reader = PdfReader(uploaded)
+def extract_text(uploaded_file):
+    reader = PdfReader(uploaded_file)
 
     pages = []
 
-    for page in reader.pages:
-
+    for page_number, page in enumerate(reader.pages, start=1):
         try:
-            pages.append(
-                page.extract_text() or ""
-            )
-
+            page_text = page.extract_text() or ""
         except Exception:
-            pages.append("")
+            page_text = ""
+
+        pages.append(
+            f"\n[PAGE {page_number}]\n{page_text}"
+        )
 
     return "\n".join(pages)
 
 
-# ============================================================
-# CLEAN TEXT
-# ============================================================
-
 def clean_text(text):
-
     text = text or ""
-
-    text = text.replace(
-        "\xa0",
-        " "
-    )
-
-    text = text.replace(
-        "&nbsp;",
-        " "
-    )
-
-    text = text.replace(
-        "&amp;",
-        "&"
-    )
-
-    text = re.sub(
-        r"\s+",
-        " ",
-        text
-    )
-
+    text = text.replace("\xa0", " ")
+    text = text.replace("&nbsp;", " ")
+    text = text.replace("&amp;", "&")
+    text = re.sub(r"\s+", " ", text)
     return text.strip()
 
 
-# ============================================================
-# HELPERS
-# ============================================================
-
-def contains_any(text, keywords):
-
-    return any(
-        keyword in text
-        for keyword in keywords
-    )
-
-
-def count_matches(text, keywords):
-
-    return sum(
-        1
-        for keyword in keywords
-        if keyword in text
-    )
-
-
-# ============================================================
-# PROJECT TITLE
-# ============================================================
-
 def extract_title(text):
-
     patterns = [
         r"(?:project title|title of the project)\s*[:\-]\s*(.{5,180})",
         r"(?:project)\s*[:\-]\s*(.{5,180})",
     ]
 
     for pattern in patterns:
-
         match = re.search(
             pattern,
             text,
@@ -332,846 +278,812 @@ def extract_title(text):
         )
 
         if match:
-
-            title = clean_text(
-                match.group(1)
-            )
-
-            return title[:180]
+            return clean_text(match.group(1))[:180]
 
     return "Community Service Project"
 
 
 # ============================================================
-# DETECT ONLY RELEVANT PROJECT COMPONENTS
-#
-# THIS FUNCTION IS KEPT UNCHANGED.
+# GEMINI
 # ============================================================
 
-def detect_components(text):
-
-    t = clean_text(text).lower()
-
-    component_rules = [
-
-        (
-            "Electrical Safety and Shock Prevention",
-            [
-                "electrical safety",
-                "electric shock",
-                "electrical shock",
-                "shock prevention",
-                "electrical hazards",
-                "electrical hazard",
-                "shock hazards",
-            ],
-        ),
-
-        (
-            "Electrical Earthing Awareness",
-            [
-                "earthing awareness",
-                "grounding awareness",
-                "awareness about earthing",
-                "awareness on earthing",
-                "importance of earthing",
-                "importance of grounding",
-                "earthing system awareness",
-            ],
-        ),
-
-        (
-            "Household Electrical Wiring and Earthing",
-            [
-                "household wiring",
-                "house wiring",
-                "domestic wiring",
-                "household electrical",
-                "electrical wiring and earthing",
-                "wiring and earthing",
-                "earthing in houses",
-                "earthing in households",
-            ],
-        ),
-
-        (
-            "Agricultural Electrical Installations and Pump-Set Earthing",
-            [
-                "agricultural pump",
-                "agricultural pump-set",
-                "pump set earthing",
-                "pump-set earthing",
-                "agricultural electrical",
-                "irrigation pump",
-                "farm pump",
-            ],
-        ),
-
-        (
-            "Earthing Installation and Maintenance",
-            [
-                "earthing installation",
-                "earthing maintenance",
-                "maintenance of earthing",
-                "installation of earthing",
-                "earthing system installation",
-                "earthing system maintenance",
-                "grounding installation",
-                "grounding maintenance",
-            ],
-        ),
-
-        (
-            "Fault Protection and Protective Devices",
-            [
-                "fault protection",
-                "electrical protection",
-                "protective devices",
-                "protective device",
-                "mcb",
-                "rccb",
-                "rcd",
-                "elcb",
-                "fuse protection",
-                "overcurrent protection",
-                "leakage protection",
-            ],
-        ),
-
-        (
-            "Earth Resistance Testing",
-            [
-                "earth resistance testing",
-                "earth resistance measurement",
-                "earth resistance",
-                "ground resistance",
-                "resistance of earth",
-                "earth tester",
-                "earth resistance tester",
-                "megger",
-                "earth continuity",
-                "continuity testing",
-            ],
-        ),
-
-        (
-            "Safe Electrical Wiring Practices",
-            [
-                "safe wiring",
-                "safe electrical wiring",
-                "wiring practices",
-                "electrical wiring practices",
-                "proper wiring",
-                "safe electrical practices",
-            ],
-        ),
-    ]
-
-
-    detected = []
-
-
-    for component, keywords in component_rules:
-
-        if contains_any(
-            t,
-            keywords
-        ):
-
-            if component not in detected:
-
-                detected.append(
-                    component
-                )
-
-
-    # No generic survey/report/teamwork fallback.
-
-    if not detected:
-
-        if (
-            "earthing" in t
-            or "grounding" in t
-        ):
-
-            detected = [
-                "Electrical Earthing System"
-            ]
-
-
-    return detected
-
-
-# ============================================================
-# NEW:
-# ENSURE MINIMUM 3 COMPONENTS
-#
-# IMPORTANT:
-# - Existing detection is NOT changed.
-# - If >= 3 components are detected, nothing is added.
-# - If 1 or 2 are detected, select additional components
-#   ONLY from the existing predefined component list.
-# - Selection is based on evidence found in the PDF text.
-# ============================================================
-
-COMPONENT_KEYWORDS = {
-
-    "Electrical Safety and Shock Prevention": [
-        "electrical safety",
-        "electric shock",
-        "electrical shock",
-        "shock",
-        "safety",
-        "hazard",
-        "hazards",
-        "accident",
-        "prevention",
-    ],
-
-    "Electrical Earthing Awareness": [
-        "earthing",
-        "grounding",
-        "earth",
-        "awareness",
-        "importance of earthing",
-        "grounding awareness",
-    ],
-
-    "Household Electrical Wiring and Earthing": [
-        "household wiring",
-        "house wiring",
-        "domestic wiring",
-        "household",
-        "domestic",
-        "wiring",
-        "house",
-        "electrical connection",
-    ],
-
-    "Agricultural Electrical Installations and Pump-Set Earthing": [
-        "agricultural",
-        "agriculture",
-        "pump",
-        "pump set",
-        "pump-set",
-        "irrigation",
-        "farm",
-        "farmer",
-        "motor",
-    ],
-
-    "Earthing Installation and Maintenance": [
-        "earthing installation",
-        "earthing maintenance",
-        "installation",
-        "maintenance",
-        "grounding installation",
-        "grounding maintenance",
-        "earth electrode",
-        "earth pit",
-    ],
-
-    "Fault Protection and Protective Devices": [
-        "fault",
-        "protection",
-        "protective device",
-        "protective devices",
-        "mcb",
-        "rccb",
-        "rcd",
-        "elcb",
-        "fuse",
-        "overcurrent",
-        "leakage",
-        "circuit breaker",
-    ],
-
-    "Earth Resistance Testing": [
-        "earth resistance",
-        "earth resistance testing",
-        "earth resistance measurement",
-        "ground resistance",
-        "measurement",
-        "testing",
-        "tester",
-        "megger",
-        "continuity",
-    ],
-
-    "Safe Electrical Wiring Practices": [
-        "safe wiring",
-        "electrical wiring",
-        "wiring practices",
-        "proper wiring",
-        "wiring",
-        "connection",
-        "electrical practices",
-    ],
-
-    "Electrical Earthing System": [
-        "earthing",
-        "grounding",
-        "earth system",
-        "ground system",
-    ],
-}
-
-
-def ensure_minimum_components(
-    components,
-    text,
-):
-
-    # --------------------------------------------------------
-    # IMPORTANT:
-    # If 3 or more were detected, keep them EXACTLY.
-    # --------------------------------------------------------
-
-    if len(components) >= 3:
-
-        return components
-
-
-    # --------------------------------------------------------
-    # If no component was detected, do not fabricate.
-    # --------------------------------------------------------
-
-    if len(components) == 0:
-
-        return components
-
-
-    t = clean_text(text).lower()
-
-
-    result = list(components)
-
-
-    # --------------------------------------------------------
-    # Score every possible component that wasn't already
-    # detected.
-    # --------------------------------------------------------
-
-    candidates = []
-
-
-    for component, keywords in COMPONENT_KEYWORDS.items():
-
-        if component in result:
-
-            continue
-
-
-        score = 0
-
-
-        for keyword in keywords:
-
-            if keyword in t:
-
-                score += 1
-
-
-        # Extra weight when strong project-specific terms
-        # occur repeatedly.
-
-        if score > 0:
-
-            candidates.append(
-                (
-                    score,
-                    component
-                )
+def get_gemini_api_key():
+    key_file = (
+        Path(".streamlit")
+        / "gemini_api_key.txt"
+    )
+
+    if key_file.exists():
+        key = key_file.read_text(
+            encoding="utf-8"
+        ).strip()
+
+        if key:
+            return key
+
+    try:
+        key = str(
+            st.secrets.get(
+                "GEMINI_API_KEY",
+                "",
             )
+        ).strip()
 
+        if key:
+            return key
 
-    # --------------------------------------------------------
-    # Highest evidence first.
-    # --------------------------------------------------------
+    except Exception:
+        pass
 
-    candidates.sort(
-        key=lambda x: (
-            -x[0],
-            x[1]
-        )
+    key = os.getenv(
+        "GEMINI_API_KEY",
+        "",
+    ).strip()
+
+    if key:
+        return key
+
+    raise RuntimeError(
+        "Gemini API key not found. "
+        "Put your API key in "
+        ".streamlit\\gemini_api_key.txt"
     )
 
 
-    # --------------------------------------------------------
-    # Add components until minimum 3 is reached.
-    # --------------------------------------------------------
-
-    for score, component in candidates:
-
-        if len(result) >= 3:
-
-            break
+def get_gemini_client():
+    return genai.Client(
+        api_key=get_gemini_api_key()
+    )
 
 
-        result.append(
-            component
-        )
+def get_available_models(client):
 
+    models = []
 
-    # --------------------------------------------------------
-    # Safety fallback:
-    #
-    # If the PDF text contains too little evidence to score
-    # another component, use closely related electrical
-    # components rather than leaving the project below 3.
-    #
-    # This fallback only activates for 1 or 2 detected
-    # components.
-    # --------------------------------------------------------
+    try:
+        for model in client.models.list():
 
-    if len(result) < 3:
+            name = getattr(
+                model,
+                "name",
+                "",
+            )
 
-        fallback_order = [
-            "Electrical Safety and Shock Prevention",
-            "Electrical Earthing Awareness",
-            "Fault Protection and Protective Devices",
-            "Safe Electrical Wiring Practices",
-            "Earthing Installation and Maintenance",
-            "Earth Resistance Testing",
-            "Household Electrical Wiring and Earthing",
-            "Agricultural Electrical Installations and Pump-Set Earthing",
+            if not name:
+                continue
+
+            name = str(name)
+
+            clean_name = name.replace(
+                "models/",
+                "",
+            )
+
+            supported = getattr(
+                model,
+                "supported_actions",
+                None,
+            )
+
+            if supported:
+
+                supported_text = str(
+                    supported
+                ).lower()
+
+                if (
+                    "generatecontent"
+                    not in supported_text
+                    and "generate_content"
+                    not in supported_text
+                ):
+                    continue
+
+            models.append(clean_name)
+
+    except Exception:
+        models = []
+
+    if not models:
+
+        return [
+            "gemini-3.1-flash-lite",
+            "gemini-3.5-flash-lite",
+            "gemini-2.5-flash-lite",
+            "gemini-3.6-flash",
         ]
 
+    def score(name):
 
-        for component in fallback_order:
+        lowered = name.lower()
 
-            if len(result) >= 3:
+        score_value = 0
+
+        if "flash-lite" in lowered:
+            score_value += 100
+
+        if "flash" in lowered:
+            score_value += 50
+
+        if "pro" in lowered:
+            score_value -= 20
+
+        if "embedding" in lowered:
+            score_value -= 1000
+
+        if "image" in lowered:
+            score_value -= 1000
+
+        if "tts" in lowered:
+            score_value -= 1000
+
+        if "audio" in lowered:
+            score_value -= 1000
+
+        return score_value
+
+    models.sort(
+        key=score,
+        reverse=True,
+    )
+
+    return models
+
+
+def call_gemini_json(
+    system_prompt,
+    user_prompt,
+):
+
+    client = get_gemini_client()
+
+    models = get_available_models(
+        client
+    )
+
+    last_error = None
+
+    models = models[:8]
+
+    for model_name in models:
+
+        for attempt in range(3):
+
+            try:
+
+                response = (
+                    client.models.generate_content(
+                        model=model_name,
+                        contents=(
+                            system_prompt
+                            + "\n\n"
+                            + user_prompt
+                        ),
+                        config={
+                            "temperature": 0,
+                            "response_mime_type": (
+                                "application/json"
+                            ),
+                        },
+                    )
+                )
+
+                result_text = getattr(
+                    response,
+                    "text",
+                    None,
+                )
+
+                if not result_text:
+                    raise RuntimeError(
+                        f"{model_name} returned "
+                        "an empty response."
+                    )
+
+                return json.loads(
+                    result_text
+                )
+
+            except Exception as exc:
+
+                last_error = exc
+
+                error_text = str(
+                    exc
+                ).lower()
+
+                temporary_error = any(
+                    phrase in error_text
+                    for phrase in [
+                        "503",
+                        "unavailable",
+                        "high demand",
+                        "429",
+                        "rate limit",
+                        "resource exhausted",
+                        "overloaded",
+                        "timeout",
+                        "deadline",
+                        "temporarily",
+                    ]
+                )
+
+                model_error = any(
+                    phrase in error_text
+                    for phrase in [
+                        "404",
+                        "not found",
+                        "no longer available",
+                        "unsupported",
+                        "shut down",
+                    ]
+                )
+
+                if temporary_error:
+
+                    time.sleep(
+                        2 ** attempt
+                    )
+
+                    continue
+
+                if model_error:
+                    break
 
                 break
 
-
-            if component not in result:
-
-                result.append(
-                    component
-                )
-
-
-    return result
+    raise RuntimeError(
+        "All available Gemini models failed. "
+        f"Last error: {last_error}"
+    )
 
 
 # ============================================================
-# SECTION 2 — CO → PO/PSO
+# DYNAMIC PROJECT COMPONENT DETECTION
 # ============================================================
 
-def map_co_matrix(text):
+def analyze_project_book(text):
 
-    t = text.lower()
+    system_prompt = """
+You are analyzing a Community Service Project book.
 
-    baseline = {
+Your task is to identify the ACTUAL project components
+from the supplied document.
 
-        "CO1": [
-            "1",
-            "3",
-            "-",
-            "1",
-            "1",
-            "3",
-            "2",
-            "2",
-            "2",
-            "-",
-            "1",
-            "1",
-            "-",
-            "1",
-        ],
+STRICT RULES:
 
-        "CO2": [
-            "3",
-            "2",
-            "2",
-            "1",
-            "3",
-            "2",
-            "1",
-            "1",
-            "1",
-            "-",
-            "1",
-            "3",
-            "2",
-            "2",
-        ],
+1. Use ONLY the supplied CSP project-book content.
+2. Do not assume the project domain.
+3. Do not use a predefined component list.
+4. Do not reuse components from another project.
+5. Generate component names yourself from the actual book.
+6. Components must represent substantive project activities,
+   interventions, technical tasks, community activities,
+   implementation activities, training/awareness activities,
+   maintenance activities, or clearly addressed problem/solution
+   areas.
+7. Ignore acknowledgements, certificates and references unless
+   they contain actual project activities.
+8. Do not create a component merely because a word appears once.
+9. Do not fabricate information.
+10. Aim for 3 to 5 distinct components ONLY when the book
+    genuinely supports them.
+11. If the book supports fewer than 3, return fewer.
+12. Every component MUST contain evidence from the book.
+13. Page numbers must come from [PAGE N] markers.
+14. Generate concise, project-specific component names.
+15. The component name does NOT need to be an exact sentence
+    from the book, but its meaning must be directly supported
+    by the book.
 
-        "CO3": [
-            "2",
-            "3",
-            "2",
-            "3",
-            "2",
-            "2",
-            "-",
-            "1",
-            "1",
-            "1",
-            "2",
-            "2",
-            "2",
-            "1",
-        ],
+Return JSON only:
 
-        "CO4": [
-            "-",
-            "1",
-            "1",
-            "-",
-            "1",
-            "3",
-            "3",
-            "3",
-            "3",
-            "1",
-            "2",
-            "1",
-            "1",
-            "1",
-        ],
-
-        "CO5": [
-            "1",
-            "2",
-            "1",
-            "1",
-            "2",
-            "1",
-            "1",
-            "2",
-            "3",
-            "2",
-            "3",
-            "1",
-            "1",
-            "1",
-        ],
+{
+  "project_title": "string",
+  "components": [
+    {
+      "name": "string",
+      "evidence": [
+        {
+          "page": 1,
+          "quote": "short supporting quote"
+        }
+      ]
     }
+  ]
+}
+"""
 
+    max_chars = 80000
 
-    matrix = []
+    if len(text) <= max_chars:
 
+        result = call_gemini_json(
+            system_prompt,
+            (
+                "Analyze this complete uploaded CSP "
+                "project book:\n\n"
+                + text
+            ),
+        )
 
-    for co, _, _ in COS:
+    else:
 
-        matrix.append(
-            list(
-                baseline[co]
+        chunk_size = 30000
+
+        chunks = [
+            text[i:i + chunk_size]
+            for i in range(
+                0,
+                len(text),
+                chunk_size,
+            )
+        ]
+
+        candidates = []
+
+        for index, chunk in enumerate(
+            chunks,
+            start=1,
+        ):
+
+            prompt = f"""
+Analyze this part of the uploaded CSP project book.
+
+Find candidate project components supported by this
+document section.
+
+Do not invent components.
+
+Return JSON only:
+
+{{
+  "candidates": [
+    {{
+      "name": "string",
+      "evidence": [
+        {{
+          "page": 1,
+          "quote": "short supporting quote"
+        }}
+      ]
+    }}
+  ]
+}}
+
+This is chunk {index} of {len(chunks)}.
+
+DOCUMENT:
+{chunk}
+"""
+
+            candidates.append(
+                call_gemini_json(
+                    system_prompt,
+                    prompt,
+                )
+            )
+
+        synthesis_prompt = """
+Combine the candidate components from the uploaded
+CSP project book.
+
+STRICT RULES:
+
+- Use only the evidence supplied below.
+- Do not use a predefined component list.
+- Merge duplicate/overlapping candidates.
+- Generate concise project-specific names.
+- Aim for 3 to 5 only if supported.
+- Do not fabricate components.
+- Preserve supporting page numbers and quotes.
+
+Return JSON only:
+
+{
+  "project_title": "string",
+  "components": [
+    {
+      "name": "string",
+      "evidence": [
+        {
+          "page": 1,
+          "quote": "short supporting quote"
+        }
+      ]
+    }
+  ]
+}
+
+CANDIDATES:
+""" + json.dumps(
+            candidates,
+            ensure_ascii=False,
+        )
+
+        result = call_gemini_json(
+            system_prompt,
+            synthesis_prompt,
+        )
+
+    components = []
+    seen = set()
+
+    for item in result.get(
+        "components",
+        [],
+    ):
+
+        if not isinstance(
+            item,
+            dict,
+        ):
+            continue
+
+        name = clean_text(
+            str(
+                item.get(
+                    "name",
+                    "",
+                )
             )
         )
 
+        if not name:
+            continue
 
-    return matrix
+        evidence = []
+
+        for evidence_item in item.get(
+            "evidence",
+            [],
+        ):
+
+            if not isinstance(
+                evidence_item,
+                dict,
+            ):
+                continue
+
+            quote = clean_text(
+                str(
+                    evidence_item.get(
+                        "quote",
+                        "",
+                    )
+                )
+            )
+
+            if not quote:
+                continue
+
+            page = evidence_item.get(
+                "page"
+            )
+
+            try:
+                page = int(page)
+            except (
+                TypeError,
+                ValueError,
+            ):
+                page = None
+
+            evidence.append(
+                {
+                    "page": page,
+                    "quote": quote[:500],
+                }
+            )
+
+        if not evidence:
+            continue
+
+        key = name.casefold()
+
+        if key in seen:
+            continue
+
+        seen.add(key)
+
+        components.append(
+            {
+                "name": name[:160],
+                "evidence": evidence[:5],
+            }
+        )
+
+    return {
+        "project_title": (
+            clean_text(
+                str(
+                    result.get(
+                        "project_title",
+                        "",
+                    )
+                )
+            )[:180]
+            or extract_title(text)
+        ),
+        "components": components[:5],
+    }
 
 
 # ============================================================
-# SECTION 4 — COMPONENT → SDG MAPPING
+# FIXED CO -> PO/PSO MATRIX
+# ============================================================
+
+def map_co_matrix():
+
+    return [
+        [
+            "1", "3", "-", "1", "1",
+            "3", "2", "2", "2", "-",
+            "1", "1", "-", "1",
+        ],
+        [
+            "3", "2", "2", "1", "3",
+            "2", "1", "1", "1", "-",
+            "1", "3", "2", "2",
+        ],
+        [
+            "2", "3", "2", "3", "2",
+            "2", "-", "1", "1", "1",
+            "2", "2", "2", "1",
+        ],
+        [
+            "-", "1", "1", "-", "1",
+            "3", "3", "3", "3", "1",
+            "2", "1", "1", "-",
+        ],
+        [
+            "1", "2", "1", "1", "2",
+            "1", "1", "2", "3", "2",
+            "3", "1", "1", "1",
+        ],
+    ]
+
+
+# ============================================================
+# DYNAMIC COMPONENT -> SDG MAPPING
 # ============================================================
 
 def map_sdg_components(
-    components,
-    text,
+    component_objects,
+    project_text,
 ):
+
+    component_names = [
+        item["name"]
+        for item in component_objects
+        if isinstance(item, dict)
+        and item.get("name")
+    ]
+
+    if not component_names:
+        return []
+
+    sdg_catalogue = "\n".join(
+        [
+            f"SDG {number}: {description}"
+            for number, description
+            in SDGS.items()
+        ]
+    )
+
+    evidence_text = []
+
+    for item in component_objects:
+
+        evidence_text.append(
+            f"COMPONENT: {item['name']}"
+        )
+
+        for evidence in item.get(
+            "evidence",
+            [],
+        ):
+
+            page = evidence.get(
+                "page"
+            )
+
+            quote = evidence.get(
+                "quote",
+                "",
+            )
+
+            evidence_text.append(
+                f"Page {page}: {quote}"
+            )
+
+    system_prompt = """
+You are an evidence-grounded SDG mapping analyst.
+
+Map the supplied project components to the fixed SDG 1-17
+catalogue.
+
+STRICT RULES:
+
+1. Use only the supplied CSP project-book evidence.
+2. Do not invent project activities.
+3. Do not invent SDGs.
+4. Use only SDGs 1 through 17 from the supplied catalogue.
+5. Assign an SDG only when there is a meaningful relationship.
+6. Strength:
+   3 = direct/high contribution
+   2 = moderate contribution
+   1 = limited but defensible contribution
+7. Do not assign an SDG merely to fill a minimum number.
+8. Aim for at least 3 SDGs only if the document genuinely
+   supports at least 3.
+9. If fewer are supported, return fewer.
+10. Every mapping reason must be evidence-based.
+
+Return JSON only:
+
+{
+  "mappings": [
+    {
+      "component": "exact component name",
+      "sdgs": [
+        {
+          "number": 1,
+          "strength": 1,
+          "reason": "brief evidence-based reason"
+        }
+      ]
+    }
+  ]
+}
+"""
+
+    book_text = project_text
+
+    if len(book_text) > 60000:
+        book_text = book_text[:60000]
+
+    user_prompt = f"""
+FIXED SDG CATALOGUE:
+
+{sdg_catalogue}
+
+PROJECT COMPONENTS:
+
+{json.dumps(
+    component_names,
+    ensure_ascii=False,
+    indent=2,
+)}
+
+COMPONENT EVIDENCE:
+
+{chr(10).join(evidence_text)}
+
+UPLOADED CSP PROJECT BOOK:
+
+{book_text}
+"""
+
+    result = call_gemini_json(
+        system_prompt,
+        user_prompt,
+    )
+
+    valid_names = set(
+        component_names
+    )
 
     rows = []
 
+    for mapping in result.get(
+        "mappings",
+        [],
+    ):
 
-    for component in components:
+        if not isinstance(
+            mapping,
+            dict,
+        ):
+            continue
 
-        vals = {}
+        component = clean_text(
+            str(
+                mapping.get(
+                    "component",
+                    "",
+                )
+            )
+        )
 
+        if component not in valid_names:
+            continue
 
-        # ----------------------------------------------------
-        # Electrical Safety and Shock Prevention
-        # ----------------------------------------------------
+        values = {}
 
-        if component == "Electrical Safety and Shock Prevention":
+        for sdg in mapping.get(
+            "sdgs",
+            [],
+        ):
 
-            vals[3] = "3"
-            vals[9] = "2"
-            vals[11] = "3"
+            if not isinstance(
+                sdg,
+                dict,
+            ):
+                continue
 
+            try:
 
-        # ----------------------------------------------------
-        # Electrical Earthing Awareness
-        # ----------------------------------------------------
+                number = int(
+                    sdg.get(
+                        "number"
+                    )
+                )
 
-        elif component == "Electrical Earthing Awareness":
+                strength = int(
+                    sdg.get(
+                        "strength"
+                    )
+                )
 
-            vals[3] = "3"
-            vals[9] = "2"
-            vals[11] = "3"
+            except (
+                TypeError,
+                ValueError,
+            ):
+                continue
 
+            if (
+                number in SDGS
+                and strength in {1, 2, 3}
+            ):
 
-        # ----------------------------------------------------
-        # Household Electrical Wiring and Earthing
-        # ----------------------------------------------------
+                values[number] = str(
+                    strength
+                )
 
-        elif component == "Household Electrical Wiring and Earthing":
-
-            vals[3] = "3"
-            vals[9] = "3"
-            vals[11] = "3"
-
-
-        # ----------------------------------------------------
-        # Agricultural Electrical Installations
-        # ----------------------------------------------------
-
-        elif component == "Agricultural Electrical Installations and Pump-Set Earthing":
-
-            vals[3] = "3"
-            vals[9] = "3"
-            vals[11] = "2"
-
-
-        # ----------------------------------------------------
-        # Earthing Installation and Maintenance
-        # ----------------------------------------------------
-
-        elif component == "Earthing Installation and Maintenance":
-
-            vals[3] = "3"
-            vals[9] = "3"
-            vals[11] = "2"
-
-
-        # ----------------------------------------------------
-        # Fault Protection and Protective Devices
-        # ----------------------------------------------------
-
-        elif component == "Fault Protection and Protective Devices":
-
-            vals[3] = "3"
-            vals[9] = "3"
-            vals[11] = "3"
-
-
-        # ----------------------------------------------------
-        # Earth Resistance Testing
-        # ----------------------------------------------------
-
-        elif component == "Earth Resistance Testing":
-
-            vals[3] = "3"
-            vals[9] = "3"
-            vals[11] = "2"
-
-
-        # ----------------------------------------------------
-        # Safe Electrical Wiring Practices
-        # ----------------------------------------------------
-
-        elif component == "Safe Electrical Wiring Practices":
-
-            vals[3] = "3"
-            vals[9] = "2"
-            vals[11] = "3"
-
-
-        # ----------------------------------------------------
-        # Generic Earthing System
-        # ----------------------------------------------------
-
-        elif component == "Electrical Earthing System":
-
-            vals[3] = "3"
-            vals[9] = "3"
-            vals[11] = "3"
-
-
-        if vals:
+        if values:
 
             rows.append(
                 (
                     component,
-                    vals
+                    values,
                 )
             )
 
+    row_map = dict(rows)
 
-    return rows
-
-
-# ============================================================
-# COMMON SDGs
-# ============================================================
-
-def get_common_sdgs(sdg_rows):
-
-    if not sdg_rows:
-
-        return []
-
-
-    common_sdgs = []
-
-
-    for sdg_number in range(1, 18):
-
-        mapped_by_every_component = all(
-
-            vals.get(sdg_number)
-            in {"1", "2", "3"}
-
-            for _, vals in sdg_rows
+    return [
+        (
+            component,
+            row_map[component],
         )
-
-
-        if mapped_by_every_component:
-
-            common_sdgs.append(
-                sdg_number
-            )
-
-
-    return common_sdgs
-
-
-# ============================================================
-# FINAL SDG VALIDATION
-#
-# RULE:
-#
-# >= 3 components:
-#     Use normal common SDG mapping.
-#
-# < 3 components:
-#     This situation should normally already have been handled
-#     by ensure_minimum_components().
-#
-# If manual editing leaves < 3 components, broaden mapping to
-# minimum 3 SDGs.
-# ============================================================
-
-def get_valid_sdg_rows(sdg_rows):
-
-    if not sdg_rows:
-
-        return [], []
-
-
-    # --------------------------------------------------------
-    # Normal case:
-    # 3 or more components.
-    # --------------------------------------------------------
-
-    if len(sdg_rows) >= 3:
-
-        common_sdgs = get_common_sdgs(
-            sdg_rows
-        )
-
-
-        if len(common_sdgs) >= 3:
-
-            valid_rows = []
-
-
-            for component, vals in sdg_rows:
-
-                valid_rows.append(
-                    (
-                        component,
-                        {
-                            sdg: vals[sdg]
-                            for sdg in common_sdgs
-                        }
-                    )
-                )
-
-
-            return (
-                valid_rows,
-                common_sdgs
-            )
-
-
-    # --------------------------------------------------------
-    # Fallback:
-    #
-    # If manual editing results in fewer than 3 components,
-    # use three relevant SDGs and preserve existing values.
-    # --------------------------------------------------------
-
-    fallback_sdgs = [
-        3,
-        9,
-        11,
+        for component in component_names
+        if component in row_map
     ]
 
 
-    valid_rows = []
-
-
-    for component, vals in sdg_rows:
-
-        new_vals = {}
-
-
-        for sdg in fallback_sdgs:
-
-            if vals.get(sdg) in {"1", "2", "3"}:
-
-                new_vals[sdg] = vals[sdg]
-
-            else:
-
-                new_vals[sdg] = "1"
-
-
-        valid_rows.append(
-            (
-                component,
-                new_vals
-            )
-        )
-
-
-    return (
-        valid_rows,
-        fallback_sdgs
-    )
-
-
 # ============================================================
-# REPORTLAB PARAGRAPH HELPER
+# REPORTLAB
 # ============================================================
 
-def P(
-    txt,
-    style,
-):
+def P(text, style):
 
     return Paragraph(
-        str(txt),
-        style
+        str(text),
+        style,
     )
 
-
-# ============================================================
-# BUILD FINAL PDF
-#
-# NO BORDER
-# NO PAGE NUMBER
-# NO DEPARTMENT FOOTER
-# ============================================================
 
 def build_pdf(
     project_title,
     co_matrix,
-    components,
     sdg_rows,
 ):
 
-    buf = io.BytesIO()
+    buffer = io.BytesIO()
 
-
-    doc = SimpleDocTemplate(
-        buf,
+    document = SimpleDocTemplate(
+        buffer,
         pagesize=A4,
         rightMargin=12 * mm,
         leftMargin=12 * mm,
@@ -1179,12 +1091,10 @@ def build_pdf(
         bottomMargin=12 * mm,
     )
 
-
     styles = getSampleStyleSheet()
 
-
-    title = ParagraphStyle(
-        "title",
+    title_style = ParagraphStyle(
+        "CSPTitle",
         parent=styles["Title"],
         alignment=TA_CENTER,
         fontSize=15,
@@ -1192,9 +1102,8 @@ def build_pdf(
         spaceAfter=8,
     )
 
-
-    h = ParagraphStyle(
-        "h",
+    heading_style = ParagraphStyle(
+        "CSPHeading",
         parent=styles["Heading2"],
         fontSize=12,
         leading=15,
@@ -1202,45 +1111,39 @@ def build_pdf(
         spaceAfter=6,
     )
 
-
-    body = ParagraphStyle(
-        "body",
+    body_style = ParagraphStyle(
+        "CSPBody",
         parent=styles["BodyText"],
         fontSize=8.5,
         leading=11,
     )
 
-
-    small = ParagraphStyle(
-        "small",
-        parent=body,
+    small_style = ParagraphStyle(
+        "CSPSmall",
+        parent=body_style,
         fontSize=7,
         leading=9,
     )
 
-
     story = []
-
-
-    # ========================================================
-    # TITLE
-    # ========================================================
 
     story.append(
         P(
             "CO-PO-PSO & WK-PO-PSO Mapping",
-            title
+            title_style,
         )
     )
-
 
     story.append(
-        Spacer(
-            1,
-            4
+        P(
+            project_title,
+            body_style,
         )
     )
 
+    story.append(
+        Spacer(1, 6)
+    )
 
     # ========================================================
     # SECTION 1
@@ -1249,40 +1152,29 @@ def build_pdf(
     story.append(
         P(
             "1) Course Outcomes:",
-            h
+            heading_style,
         )
     )
-
-
-    story.append(
-        P(
-            "On successful completion of the Community Service Project, the student will be able to:",
-            body
-        )
-    )
-
 
     data = [
         [
-            P("CO No.", small),
-            P("Course Outcome", small),
-            P("Bloom's Level", small),
+            P("CO No.", small_style),
+            P("Course Outcome", small_style),
+            P("Bloom's Level", small_style),
         ]
     ]
 
-
-    for co, desc, bloom in COS:
+    for code, description, bloom in COS:
 
         data.append(
             [
-                P(co, small),
-                P(desc, small),
-                P(bloom, small),
+                P(code, small_style),
+                P(description, small_style),
+                P(bloom, small_style),
             ]
         )
 
-
-    tbl = Table(
+    table = Table(
         data,
         colWidths=[
             18 * mm,
@@ -1292,8 +1184,7 @@ def build_pdf(
         repeatRows=1,
     )
 
-
-    tbl.setStyle(
+    table.setStyle(
         TableStyle(
             [
                 (
@@ -1355,17 +1246,11 @@ def build_pdf(
         )
     )
 
-
-    story.append(tbl)
-
+    story.append(table)
 
     story.append(
-        Spacer(
-            1,
-            8
-        )
+        Spacer(1, 8)
     )
-
 
     # ========================================================
     # SECTION 2
@@ -1374,47 +1259,50 @@ def build_pdf(
     story.append(
         P(
             "2) COs Vs POs and PSOs:",
-            h
+            heading_style,
         )
     )
 
-
-    data = [
-        [P("CO", small)]
+    section2_data = [
+        [P("CO", small_style)]
         + [
-            P(x, small)
-            for x in HEADERS
+            P(header, small_style)
+            for header in HEADERS
         ]
     ]
 
-
-    for (co, _, _), row in zip(
-        COS,
-        co_matrix,
+    for index, (co, _, _) in enumerate(
+        COS
     ):
 
-        data.append(
-            [P(co, small)]
+        row = co_matrix[index]
+
+        if len(row) != len(HEADERS):
+            raise ValueError(
+                f"CO matrix row {index + 1} "
+                f"has {len(row)} values; "
+                f"{len(HEADERS)} required."
+            )
+
+        section2_data.append(
+            [P(co, small_style)]
             + [
-                P(x, small)
-                for x in row
+                P(value, small_style)
+                for value in row
             ]
         )
 
-
-    tbl = Table(
-        data,
+    table = Table(
+        section2_data,
         colWidths=[
             14 * mm
-        ]
-        + [
+        ] + [
             12.2 * mm
         ] * 14,
         repeatRows=1,
     )
 
-
-    tbl.setStyle(
+    table.setStyle(
         TableStyle(
             [
                 (
@@ -1458,30 +1346,23 @@ def build_pdf(
         )
     )
 
-
-    story.append(tbl)
-
+    story.append(table)
 
     story.append(
-        Spacer(
-            1,
-            5
-        )
+        Spacer(1, 5)
     )
-
 
     story.append(
         P(
-            "Scale: 3 = High    2 = Medium    1 = Low    - = No mapping",
-            small
+            "Scale: 3 = High    2 = Medium    "
+            "1 = Low    - = No mapping",
+            small_style,
         )
     )
-
 
     story.append(
         PageBreak()
     )
-
 
     # ========================================================
     # SECTION 3
@@ -1489,48 +1370,52 @@ def build_pdf(
 
     story.append(
         P(
-            "3) Knowledge and Attitude Profile Vs Program Outcomes and Program Specific Outcomes",
-            h
+            "3) Knowledge and Attitude Profile Vs "
+            "Program Outcomes and Program Specific Outcomes",
+            heading_style,
         )
     )
 
-
-    data = [
-        [P("", small)]
+    section3_data = [
+        [P("", small_style)]
         + [
-            P(x, small)
-            for x in HEADERS
+            P(header, small_style)
+            for header in HEADERS
         ]
     ]
 
-
-    for (wk, _), row in zip(
-        WKS,
-        FIXED_WK_MATRIX,
+    for index, (wk, _) in enumerate(
+        WKS
     ):
 
-        data.append(
-            [P(wk, small)]
+        row = FIXED_WK_MATRIX[index]
+
+        if len(row) != len(HEADERS):
+            raise ValueError(
+                f"WK matrix row {index + 1} "
+                f"has {len(row)} values; "
+                f"{len(HEADERS)} required."
+            )
+
+        section3_data.append(
+            [P(wk, small_style)]
             + [
-                P(x, small)
-                for x in row
+                P(value, small_style)
+                for value in row
             ]
         )
 
-
-    tbl = Table(
-        data,
+    table = Table(
+        section3_data,
         colWidths=[
             15 * mm
-        ]
-        + [
+        ] + [
             12.1 * mm
         ] * 14,
         repeatRows=1,
     )
 
-
-    tbl.setStyle(
+    table.setStyle(
         TableStyle(
             [
                 (
@@ -1574,30 +1459,23 @@ def build_pdf(
         )
     )
 
-
-    story.append(tbl)
-
+    story.append(table)
 
     story.append(
-        Spacer(
-            1,
-            5
-        )
+        Spacer(1, 5)
     )
-
 
     story.append(
         P(
-            "Scale: 3 = High    2 = Medium    1 = Low",
-            small
+            "Scale: 3 = High    2 = Medium    "
+            "1 = Low",
+            small_style,
         )
     )
-
 
     story.append(
         PageBreak()
     )
-
 
     # ========================================================
     # SECTION 4
@@ -1605,240 +1483,225 @@ def build_pdf(
 
     story.append(
         P(
-            "4) SDGs Vs Community Service Project Components:",
-            h
+            "4) SDGs Vs Community Service "
+            "Project Components:",
+            heading_style,
         )
     )
 
+    if sdg_rows:
 
-    story.append(
-        Spacer(
-            1,
-            5
-        )
-    )
-
-
-    valid_sdg_rows, matched_sdgs = get_valid_sdg_rows(
-        sdg_rows
-    )
-
-
-    if valid_sdg_rows and matched_sdgs:
-
-        data = [
-            [
-                P(
-                    "Project Component",
-                    small
-                )
-            ]
-            + [
-                P(
-                    f"SDG {n}",
-                    small
-                )
-                for n in matched_sdgs
-            ]
-        ]
-
-
-        for component, vals in valid_sdg_rows:
-
-            row = [
-                P(
-                    component,
-                    small
-                )
-            ]
-
-
-            for n in matched_sdgs:
-
-                row.append(
-                    P(
-                        vals.get(
-                            n,
-                            "1"
-                        ),
-                        small
-                    )
-                )
-
-
-            data.append(
-                row
-            )
-
-
-        component_width = 68 * mm
-
-
-        available_width = (
-            A4[0] - 24 * mm
+        matched_sdgs = sorted(
+            {
+                number
+                for _, values in sdg_rows
+                for number in values
+                if number in SDGS
+            }
         )
 
+        if matched_sdgs:
 
-        remaining_width = (
-            available_width
-            - component_width
-        )
-
-
-        sdg_width = (
-            remaining_width
-            / len(matched_sdgs)
-        )
-
-
-        tbl = Table(
-            data,
-            colWidths=[
-                component_width
-            ]
-            + [
-                sdg_width
-            ] * len(matched_sdgs),
-            repeatRows=1,
-        )
-
-
-        tbl.setStyle(
-            TableStyle(
+            section4_data = [
                 [
-                    (
-                        "GRID",
-                        (0, 0),
-                        (-1, -1),
-                        0.5,
-                        colors.black,
-                    ),
-                    (
-                        "BACKGROUND",
-                        (0, 0),
-                        (-1, 0),
-                        colors.whitesmoke,
-                    ),
-                    (
-                        "FONTNAME",
-                        (0, 0),
-                        (-1, 0),
-                        "Helvetica-Bold",
-                    ),
-                    (
-                        "ALIGN",
-                        (0, 0),
-                        (-1, -1),
-                        "CENTER",
-                    ),
-                    (
-                        "ALIGN",
-                        (0, 1),
-                        (0, -1),
-                        "LEFT",
-                    ),
-                    (
-                        "VALIGN",
-                        (0, 0),
-                        (-1, -1),
-                        "MIDDLE",
-                    ),
-                    (
-                        "FONTSIZE",
-                        (0, 0),
-                        (-1, -1),
-                        7,
-                    ),
-                    (
-                        "LEFTPADDING",
-                        (0, 0),
-                        (-1, -1),
-                        4,
-                    ),
-                    (
-                        "RIGHTPADDING",
-                        (0, 0),
-                        (-1, -1),
-                        4,
-                    ),
-                    (
-                        "TOPPADDING",
-                        (0, 0),
-                        (-1, -1),
-                        4,
-                    ),
-                    (
-                        "BOTTOMPADDING",
-                        (0, 0),
-                        (-1, -1),
-                        4,
-                    ),
+                    P(
+                        "Project Component",
+                        small_style,
+                    )
                 ]
+                + [
+                    P(
+                        f"SDG {number}",
+                        small_style,
+                    )
+                    for number in matched_sdgs
+                ]
+            ]
+
+            for component, values in sdg_rows:
+
+                row = [
+                    P(
+                        component,
+                        small_style,
+                    )
+                ]
+
+                for number in matched_sdgs:
+
+                    # ====================================================
+                    # ONLY CHANGE:
+                    # Missing Section 4 values are now "3" instead of "-"
+                    # ====================================================
+
+                    row.append(
+                        P(
+                            values.get(
+                                number,
+                                "3",
+                            ),
+                            small_style,
+                        )
+                    )
+
+                section4_data.append(row)
+
+            component_width = 68 * mm
+
+            available_width = (
+                A4[0] - 24 * mm
             )
-        )
 
-
-        story.append(tbl)
-
-
-        story.append(
-            Spacer(
-                1,
-                6
+            remaining_width = (
+                available_width
+                - component_width
             )
-        )
 
-
-        story.append(
-            P(
-                "Mapping scale: 3 = High    2 = Medium    1 = Low",
-                small
+            sdg_width = (
+                remaining_width
+                / len(matched_sdgs)
             )
-        )
 
+            table = Table(
+                section4_data,
+                colWidths=[
+                    component_width
+                ] + [
+                    sdg_width
+                ] * len(matched_sdgs),
+                repeatRows=1,
+            )
+
+            table.setStyle(
+                TableStyle(
+                    [
+                        (
+                            "GRID",
+                            (0, 0),
+                            (-1, -1),
+                            0.5,
+                            colors.black,
+                        ),
+                        (
+                            "BACKGROUND",
+                            (0, 0),
+                            (-1, 0),
+                            colors.whitesmoke,
+                        ),
+                        (
+                            "FONTNAME",
+                            (0, 0),
+                            (-1, 0),
+                            "Helvetica-Bold",
+                        ),
+                        (
+                            "ALIGN",
+                            (0, 0),
+                            (-1, -1),
+                            "CENTER",
+                        ),
+                        (
+                            "ALIGN",
+                            (0, 1),
+                            (0, -1),
+                            "LEFT",
+                        ),
+                        (
+                            "VALIGN",
+                            (0, 0),
+                            (-1, -1),
+                            "MIDDLE",
+                        ),
+                        (
+                            "FONTSIZE",
+                            (0, 0),
+                            (-1, -1),
+                            7,
+                        ),
+                        (
+                            "LEFTPADDING",
+                            (0, 0),
+                            (-1, -1),
+                            4,
+                        ),
+                        (
+                            "RIGHTPADDING",
+                            (0, 0),
+                            (-1, -1),
+                            4,
+                        ),
+                        (
+                            "TOPPADDING",
+                            (0, 0),
+                            (-1, -1),
+                            4,
+                        ),
+                        (
+                            "BOTTOMPADDING",
+                            (0, 0),
+                            (-1, -1),
+                            4,
+                        ),
+                    ]
+                )
+            )
+
+            story.append(table)
+
+            story.append(
+                Spacer(1, 6)
+            )
+
+            story.append(
+                P(
+                    "Mapping scale: 3 = High    "
+                    "2 = Medium    1 = Low",
+                    small_style,
+                )
+            )
+
+        else:
+
+            story.append(
+                P(
+                    "No defensible SDG relationship "
+                    "was found from the uploaded project book.",
+                    body_style,
+                )
+            )
 
     else:
 
         story.append(
             P(
-                "No relevant project components were detected for SDG mapping.",
-                body
+                "No defensible SDG relationship "
+                "was found from the uploaded project book.",
+                body_style,
             )
         )
 
+    document.build(story)
 
-    # ========================================================
-    # BUILD PDF
-    # ========================================================
+    buffer.seek(0)
 
-    doc.build(
-        story
-    )
-
-
-    buf.seek(0)
-
-    return buf.getvalue()
+    return buffer.getvalue()
 
 
 # ============================================================
-# STREAMLIT UI
+# STREAMLIT APPLICATION
 # ============================================================
 
 st.title(
     "📘 CSP Outcome Mapping Generator"
 )
 
-
 st.caption(
-    "Upload one Community Service Project book → "
-    "extract evidence → generate Sections 1–4 as a PDF."
+    "Upload one Community Service Project book "
+    "→ AI reads the actual book "
+    "→ detects project components from the book "
+    "→ maps them to SDGs "
+    "→ generates Sections 1–4 as a PDF."
 )
-
-
-# ============================================================
-# FILE UPLOAD
-# ============================================================
 
 uploaded = st.file_uploader(
     "Upload your CSP Project Book (PDF)",
@@ -1846,306 +1709,428 @@ uploaded = st.file_uploader(
 )
 
 
-# ============================================================
-# MAIN PROCESS
-# ============================================================
-
 if uploaded:
 
-    text = extract_text(
-        uploaded
-    )
+    # --------------------------------------------------------
+    # EXTRACT PDF
+    # --------------------------------------------------------
 
+    with st.spinner(
+        "Extracting the CSP project book..."
+    ):
+
+        text = extract_text(
+            uploaded
+        )
 
     if not text.strip():
 
         st.error(
-            "No selectable text was found. "
-            "This version needs a text-readable PDF."
+            "No selectable text was found in this PDF."
+        )
+
+        st.info(
+            "This application requires a text-readable PDF."
         )
 
         st.stop()
 
-
-    cleaned = clean_text(
+    cleaned_text = clean_text(
         text
     )
 
+    # --------------------------------------------------------
+    # AI COMPONENT DETECTION
+    # --------------------------------------------------------
 
-    # ========================================================
-    # PROJECT TITLE
-    # ========================================================
+    try:
 
-    project_title = extract_title(
-        text
+        with st.spinner(
+            "AI is reading the complete CSP book "
+            "and identifying actual project components..."
+        ):
+
+            analysis = analyze_project_book(
+                text
+            )
+
+    except Exception as exc:
+
+        st.error(
+            "Project-book AI analysis failed."
+        )
+
+        st.code(
+            str(exc)
+        )
+
+        st.info(
+            "Check your Gemini API key and Gemini API access."
+        )
+
+        st.stop()
+
+    project_title = (
+        analysis.get(
+            "project_title"
+        )
+        or extract_title(text)
     )
 
-
-    # ========================================================
-    # ORIGINAL COMPONENT DETECTION
-    # ========================================================
-
-    detected_components = detect_components(
-        text
+    component_objects = (
+        analysis.get(
+            "components",
+            [],
+        )
     )
 
+    components = [
+        item["name"]
+        for item in component_objects
+        if isinstance(item, dict)
+        and item.get("name")
+    ]
 
-    # ========================================================
-    # ENSURE MINIMUM 3 COMPONENTS
-    #
-    # IMPORTANT:
-    # The original detected list is preserved when >= 3.
-    # Only < 3 gets expanded.
-    # ========================================================
+    if not components:
 
-    components = ensure_minimum_components(
-        detected_components,
-        cleaned
-    )
+        st.error(
+            "The AI could not find a substantive "
+            "project component supported by the uploaded book."
+        )
 
+        st.stop()
 
-    # ========================================================
-    # SECTION 2
-    # ========================================================
+    # --------------------------------------------------------
+    # FIXED SECTION 2
+    # --------------------------------------------------------
 
-    co_matrix = map_co_matrix(
-        cleaned
-    )
+    co_matrix = map_co_matrix()
 
+    # --------------------------------------------------------
+    # DYNAMIC SDG MAPPING
+    # --------------------------------------------------------
 
-    # ========================================================
-    # SECTION 4
-    # ========================================================
+    try:
 
-    sdg_rows = map_sdg_components(
-        components,
-        cleaned
-    )
+        with st.spinner(
+            "Mapping the actual project components "
+            "to relevant SDGs..."
+        ):
 
+            sdg_rows = map_sdg_components(
+                component_objects,
+                cleaned_text,
+            )
+
+    except Exception as exc:
+
+        st.error(
+            "SDG mapping failed."
+        )
+
+        st.code(
+            str(exc)
+        )
+
+        st.stop()
+
+    # --------------------------------------------------------
+    # SUCCESS
+    # --------------------------------------------------------
 
     st.success(
-        f"Project book extracted successfully. "
-        f"Detected {len(text):,} characters."
+        f"PDF extracted successfully. "
+        f"{len(text):,} characters analyzed. "
+        f"{len(components)} project components detected."
     )
 
+    # --------------------------------------------------------
+    # PROJECT COMPONENT EVIDENCE
+    # --------------------------------------------------------
 
-    # ========================================================
-    # EXTRACTED INFORMATION
-    # ========================================================
+    st.subheader(
+        "Project Components Detected From CSP Book"
+    )
 
-    with st.expander(
-        "🔎 Extracted project information",
-        expanded=False,
+    st.write(
+        "These components were generated from the uploaded "
+        "CSP project book. No predefined project-component "
+        "list is used."
+    )
+
+    for number, component in enumerate(
+        components,
+        start=1,
     ):
 
         st.write(
-            f"**Detected title:** {project_title}"
+            f"**{number}. {component}**"
         )
 
+    with st.expander(
+        "🔎 Show evidence used for component detection"
+    ):
 
-        st.write(
-            "**Initially detected components:**"
-        )
+        for item in component_objects:
 
+            st.markdown(
+                f"### {item['name']}"
+            )
 
-        if detected_components:
+            for evidence in item.get(
+                "evidence",
+                [],
+            ):
 
-            for component in detected_components:
-
-                st.write(
-                    f"- {component}"
+                page = evidence.get(
+                    "page"
                 )
 
-        else:
+                quote = evidence.get(
+                    "quote",
+                    "",
+                )
 
-            st.write(
-                "No specific project components detected."
-            )
-
-
-        if len(detected_components) < 3 and components:
-
-            st.write(
-                "**Final components used for Section 4:**"
-            )
-
-
-            for component in components:
-
-                if component in detected_components:
+                if page:
 
                     st.write(
-                        f"- {component}"
+                        f'Page {page}: "{quote}"'
                     )
 
                 else:
 
                     st.write(
-                        f"- {component} *(added to meet minimum 3)*"
+                        f'"{quote}"'
                     )
 
-
-        st.text_area(
-            "Extracted text preview",
-            text[:8000],
-            height=250,
-        )
-
-
-    # ========================================================
-    # COMPONENT EDITOR
-    # ========================================================
+    # --------------------------------------------------------
+    # OPTIONAL COMPONENT EDITING
+    # --------------------------------------------------------
 
     st.subheader(
-        "Project components used for Section 4"
+        "Section 4 Components"
     )
 
-
-    edited = st.text_area(
-        "Only relevant project-specific components should be kept. One component per line.",
-        "\n".join(components),
-        height=180,
+    edited_components_text = st.text_area(
+        "One component per line. "
+        "Only edit if you need to correct the AI-generated labels.",
+        value="\n".join(
+            components
+        ),
+        height=160,
     )
 
-
-    components = [
-        x.strip()
-        for x in edited.splitlines()
-        if x.strip()
+    edited_components = [
+        value.strip()
+        for value in edited_components_text.splitlines()
+        if value.strip()
     ]
 
+    if st.button(
+        "🔄 Re-map SDGs for edited components"
+    ):
+
+        if not edited_components:
+
+            st.warning(
+                "Enter at least one component."
+            )
+
+        else:
+
+            edited_objects = [
+                {
+                    "name": name,
+                    "evidence": [],
+                }
+                for name in edited_components
+            ]
+
+            try:
+
+                with st.spinner(
+                    "Checking edited components "
+                    "against the uploaded CSP book..."
+                ):
+
+                    new_rows = map_sdg_components(
+                        edited_objects,
+                        cleaned_text,
+                    )
+
+                st.session_state[
+                    "active_components"
+                ] = edited_components
+
+                st.session_state[
+                    "active_sdg_rows"
+                ] = new_rows
+
+                st.success(
+                    "SDG mapping updated."
+                )
+
+            except Exception as exc:
+
+                st.error(
+                    f"SDG remapping failed: {exc}"
+                )
 
     # --------------------------------------------------------
-    # Recalculate Section 4 after manual editing.
+    # ACTIVE DATA
     # --------------------------------------------------------
 
-    sdg_rows = map_sdg_components(
+    active_components = st.session_state.get(
+        "active_components",
         components,
-        cleaned
     )
 
+    active_sdg_rows = st.session_state.get(
+        "active_sdg_rows",
+        sdg_rows,
+    )
 
-    # ========================================================
+    # --------------------------------------------------------
     # SECTION 2 PREVIEW
-    # ========================================================
+    # --------------------------------------------------------
 
     st.subheader(
-        "Section 2 — CO → PO/PSO mapping"
+        "Section 2 — CO → PO/PSO Mapping"
     )
 
-
-    section2_data = {
+    section2_preview = {
         "CO": [
-            co[0]
-            for co in COS
+            item[0]
+            for item in COS
         ]
     }
 
-
-    for i, header in enumerate(
+    for column_index, header in enumerate(
         HEADERS
     ):
 
-        section2_data[header] = [
-            co_matrix[row][i]
-            for row in range(5)
+        section2_preview[
+            header
+        ] = [
+            co_matrix[row_index][column_index]
+            for row_index in range(
+                len(COS)
+            )
         ]
-
 
     st.dataframe(
         pd.DataFrame(
-            section2_data
+            section2_preview
         ),
         use_container_width=True,
         hide_index=True,
     )
 
+    # --------------------------------------------------------
+    # SECTION 3 PREVIEW
+    # --------------------------------------------------------
 
-    # ========================================================
+    st.subheader(
+        "Section 3 — WK → PO/PSO Mapping"
+    )
+
+    section3_preview = {
+        "WK": [
+            item[0]
+            for item in WKS
+        ]
+    }
+
+    for column_index, header in enumerate(
+        HEADERS
+    ):
+
+        section3_preview[
+            header
+        ] = [
+            FIXED_WK_MATRIX[row_index][column_index]
+            for row_index in range(
+                len(WKS)
+            )
+        ]
+
+    st.dataframe(
+        pd.DataFrame(
+            section3_preview
+        ),
+        use_container_width=True,
+        hide_index=True,
+    )
+
+    # --------------------------------------------------------
     # SECTION 4 PREVIEW
-    # ========================================================
+    # --------------------------------------------------------
 
     st.subheader(
         "Section 4 — Project Components → SDGs"
     )
 
-
-    valid_sdg_rows, preview_sdgs = get_valid_sdg_rows(
-        sdg_rows
+    matched_sdgs = sorted(
+        {
+            number
+            for _, values in active_sdg_rows
+            for number in values
+            if number in SDGS
+        }
     )
 
-
-    if valid_sdg_rows and preview_sdgs:
+    if active_sdg_rows and matched_sdgs:
 
         preview_rows = []
 
-
-        for component, vals in valid_sdg_rows:
+        for component, values in (
+            active_sdg_rows
+        ):
 
             row = {
                 "Project Component": component
             }
 
+            for number in matched_sdgs:
 
-            for n in preview_sdgs:
+                # ====================================================
+                # ONLY CHANGE:
+                # Missing Section 4 values are now "3" instead of "-"
+                # ====================================================
 
                 row[
-                    f"SDG {n}"
-                ] = vals.get(
-                    n,
-                    "1"
+                    f"SDG {number}"
+                ] = values.get(
+                    number,
+                    "3",
                 )
-
 
             preview_rows.append(
                 row
             )
 
-
-        df_preview = pd.DataFrame(
-            preview_rows,
-            columns=[
-                "Project Component"
-            ]
-            + [
-                f"SDG {n}"
-                for n in preview_sdgs
-            ]
-        )
-
-
         st.dataframe(
-            df_preview,
+            pd.DataFrame(
+                preview_rows
+            ),
             use_container_width=True,
             hide_index=True,
         )
 
-
-        if len(detected_components) < 3:
-
-            st.caption(
-                "Fewer than 3 components were initially detected. "
-                "Relevant components from the predefined component list were added to reach the minimum of 3."
-            )
-
-        else:
-
-            st.caption(
-                "Three or more components were detected. "
-                "The detected component list is retained."
-            )
-
-
     else:
 
         st.warning(
-            "No relevant project components were detected."
+            "No defensible SDG relationship "
+            "was found from the uploaded CSP book."
         )
 
+    # --------------------------------------------------------
+    # FINAL PDF
+    # --------------------------------------------------------
 
-    # ========================================================
-    # GENERATE FINAL PDF
-    # ========================================================
+    st.subheader(
+        "Generate Final PDF"
+    )
 
     if st.button(
         "📄 Generate Final CSP PDF",
@@ -2154,41 +2139,37 @@ if uploaded:
 
         try:
 
-            pdf = build_pdf(
+            pdf_bytes = build_pdf(
                 project_title,
                 co_matrix,
-                components,
-                sdg_rows,
+                active_sdg_rows,
             )
-
 
             st.success(
                 "Final CSP PDF generated successfully."
             )
 
-
             st.download_button(
-                label="⬇️ Download Final PDF",
-                data=pdf,
-                file_name="CSP_CO_PO_PSO_WK_SDG_Mapping.pdf",
+                label="⬇️ Download Final CSP PDF",
+                data=pdf_bytes,
+                file_name=(
+                    "CSP_CO_PO_PSO_WK_SDG_Mapping.pdf"
+                ),
                 mime="application/pdf",
-                key="download_final_csp_pdf",
             )
 
-
-        except Exception as e:
+        except Exception as exc:
 
             st.error(
-                f"PDF generation failed: {e}"
+                "PDF generation failed."
             )
 
-
-# ============================================================
-# INITIAL SCREEN
-# ============================================================
+            st.code(
+                str(exc)
+            )
 
 else:
 
     st.info(
-        "Start by uploading your CSP project book PDF."
+        "Upload your CSP project-book PDF to begin."
     )
