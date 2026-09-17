@@ -1,6 +1,7 @@
 import io
 import re
 
+import pandas as pd
 import streamlit as st
 from pypdf import PdfReader
 
@@ -31,7 +32,7 @@ st.set_page_config(
 
 
 # ============================================================
-# FIXED MASTER DATA
+# FIXED COURSE OUTCOMES
 # ============================================================
 
 COS = [
@@ -62,6 +63,10 @@ COS = [
     ),
 ]
 
+
+# ============================================================
+# PROGRAM OUTCOMES
+# ============================================================
 
 POS = [
     (
@@ -111,6 +116,10 @@ POS = [
 ]
 
 
+# ============================================================
+# PROGRAM SPECIFIC OUTCOMES
+# ============================================================
+
 PSOS = [
     (
         "PSO1",
@@ -126,6 +135,10 @@ PSOS = [
     ),
 ]
 
+
+# ============================================================
+# KNOWLEDGE PROFILE
+# ============================================================
 
 WKS = [
     (
@@ -168,7 +181,7 @@ WKS = [
 
 
 # ============================================================
-# FIXED SECTION 3 MATRIX
+# FIXED WK → PO/PSO MATRIX
 # ============================================================
 
 FIXED_WK_MATRIX = [
@@ -224,7 +237,7 @@ HEADERS = (
 
 
 # ============================================================
-# TEXT EXTRACTION
+# EXTRACT PDF TEXT
 # ============================================================
 
 def extract_text(uploaded):
@@ -246,36 +259,40 @@ def extract_text(uploaded):
     return "\n".join(pages)
 
 
+# ============================================================
+# CLEAN TEXT
+# ============================================================
+
 def clean_text(text):
 
     text = text or ""
 
     text = text.replace(
         "\xa0",
-        " ",
+        " "
     )
 
     text = text.replace(
         "&nbsp;",
-        " ",
+        " "
     )
 
     text = text.replace(
         "&amp;",
-        "&",
+        "&"
     )
 
     text = re.sub(
         r"\s+",
         " ",
-        text,
+        text
     )
 
     return text.strip()
 
 
 # ============================================================
-# HELPER FUNCTIONS
+# HELPERS
 # ============================================================
 
 def contains_any(text, keywords):
@@ -293,21 +310,6 @@ def count_matches(text, keywords):
         for keyword in keywords
         if keyword in text
     )
-
-
-def max_level(a, b):
-
-    order = {
-        "-": 0,
-        "1": 1,
-        "2": 2,
-        "3": 3,
-    }
-
-    if order[str(b)] > order[str(a)]:
-        return b
-
-    return a
 
 
 # ============================================================
@@ -341,163 +343,165 @@ def extract_title(text):
 
 
 # ============================================================
-# COMPONENT DETECTION
+# DETECT ONLY RELEVANT PROJECT COMPONENTS
 # ============================================================
 
 def detect_components(text):
 
-    t = text.lower()
+    t = clean_text(text).lower()
 
-    candidates = [
-
-        (
-            "Community survey / household survey",
-            [
-                "survey",
-                "household survey",
-                "questionnaire",
-                "respondent",
-                "residents",
-                "data collection",
-            ],
-        ),
+    component_rules = [
 
         (
-            "Electrical wiring and safety assessment",
+            "Electrical Safety and Shock Prevention",
             [
-                "electrical wiring",
-                "wiring inspection",
-                "wiring assessment",
-                "loose connection",
-                "damaged wire",
+                "electrical safety",
+                "electric shock",
                 "electrical shock",
-                "short circuit",
+                "shock prevention",
+                "electrical hazards",
+                "electrical hazard",
+                "shock hazards",
             ],
         ),
 
         (
-            "Earthing / grounding assessment",
+            "Electrical Earthing Awareness",
             [
-                "earthing",
-                "grounding",
-                "earth electrode",
-                "earth pit",
-                "earth resistance",
-                "pipe earthing",
+                "earthing awareness",
+                "grounding awareness",
+                "awareness about earthing",
+                "awareness on earthing",
+                "importance of earthing",
+                "importance of grounding",
+                "earthing system awareness",
             ],
         ),
 
         (
-            "Awareness session / demonstration",
+            "Household Electrical Wiring and Earthing",
             [
-                "awareness programme",
-                "awareness program",
-                "awareness session",
-                "demonstration",
-                "seminar",
-                "explained",
-                "educated",
-                "training",
+                "household wiring",
+                "house wiring",
+                "domestic wiring",
+                "household electrical",
+                "electrical wiring and earthing",
+                "wiring and earthing",
+                "earthing in houses",
+                "earthing in households",
             ],
         ),
 
         (
-            "Community interaction",
+            "Agricultural Electrical Installations and Pump-Set Earthing",
             [
-                "community interaction",
-                "interaction with residents",
-                "interaction with villagers",
-                "interaction with farmers",
-                "meeting with residents",
-                "meeting with villagers",
+                "agricultural pump",
+                "agricultural pump-set",
+                "pump set earthing",
+                "pump-set earthing",
+                "agricultural electrical",
+                "irrigation pump",
+                "farm pump",
             ],
         ),
 
         (
-            "Survey data analysis / charts",
+            "Earthing Installation and Maintenance",
             [
-                "survey data analysis",
-                "data analysis",
-                "percentage analysis",
-                "graph",
-                "graphs",
-                "chart",
-                "charts",
-                "statistical analysis",
+                "earthing installation",
+                "earthing maintenance",
+                "maintenance of earthing",
+                "installation of earthing",
+                "earthing system installation",
+                "earthing system maintenance",
+                "grounding installation",
+                "grounding maintenance",
             ],
         ),
 
         (
-            "Protective devices / electrical protection",
+            "Fault Protection and Protective Devices",
             [
+                "fault protection",
+                "electrical protection",
+                "protective devices",
+                "protective device",
                 "mcb",
+                "rccb",
                 "rcd",
                 "elcb",
-                "fuse",
-                "protective device",
-                "electrical protection",
+                "fuse protection",
+                "overcurrent protection",
+                "leakage protection",
             ],
         ),
 
         (
-            "Energy conservation / efficient use",
+            "Earth Resistance Testing",
             [
-                "energy saving",
-                "energy conservation",
-                "efficient use of electricity",
-                "electricity consumption",
-                "energy efficiency",
+                "earth resistance testing",
+                "earth resistance measurement",
+                "earth resistance",
+                "ground resistance",
+                "resistance of earth",
+                "earth tester",
+                "earth resistance tester",
+                "megger",
+                "earth continuity",
+                "continuity testing",
             ],
         ),
 
         (
-            "Environmental / sustainability activity",
+            "Safe Electrical Wiring Practices",
             [
-                "environmental activity",
-                "environment protection",
-                "sustainability activity",
-                "renewable energy",
-                "solar energy",
-            ],
-        ),
-
-        (
-            "Report / documentation",
-            [
-                "project report",
-                "technical report",
-                "documentation",
-                "presentation",
-                "seminar presentation",
+                "safe wiring",
+                "safe electrical wiring",
+                "wiring practices",
+                "electrical wiring practices",
+                "proper wiring",
+                "safe electrical practices",
             ],
         ),
     ]
 
-    found = []
 
-    for label, keywords in candidates:
+    detected = []
+
+
+    for component, keywords in component_rules:
 
         if contains_any(
             t,
-            keywords,
+            keywords
         ):
-            found.append(label)
 
-    if not found:
+            if component not in detected:
 
-        found = [
-            "Community survey / field observation",
-            "Community interaction",
-            "Awareness / service activity",
-            "Survey findings and documentation",
-        ]
+                detected.append(
+                    component
+                )
 
-    return found
+
+    # No generic survey/report/teamwork fallback.
+
+    if not detected:
+
+        if (
+            "earthing" in t
+            or "grounding" in t
+        ):
+
+            detected = [
+                "Electrical Earthing System"
+            ]
+
+
+    return detected
 
 
 # ============================================================
-# SECTION 2
-# ACCURATE AND MORE COMPLETE CO → PO/PSO MAPPING
+# SECTION 2 — CO → PO/PSO
 # ============================================================
 
 def map_co_matrix(text):
@@ -592,772 +596,271 @@ def map_co_matrix(text):
         ],
     }
 
-    community_evidence = [
-        "community",
-        "villagers",
-        "residents",
-        "farmers",
-        "households",
-        "survey",
-        "field visit",
-        "field observation",
-        "interaction",
-        "questionnaire",
-        "respondent",
-    ]
-
-    problem_evidence = [
-        "problem",
-        "issue",
-        "need",
-        "challenge",
-        "difficulty",
-        "existing condition",
-        "existing practice",
-        "deficiency",
-        "requirement",
-    ]
-
-    safety_evidence = [
-        "safety",
-        "electrical safety",
-        "shock",
-        "hazard",
-        "short circuit",
-        "fire",
-        "loose connection",
-        "damaged wire",
-        "earthing",
-        "grounding",
-        "mcb",
-        "fuse",
-        "protective device",
-    ]
-
-    electrical_evidence = [
-        "electrical",
-        "electricity",
-        "voltage",
-        "current",
-        "power",
-        "wiring",
-        "earthing",
-        "grounding",
-        "transformer",
-        "motor",
-        "electrical load",
-        "mcb",
-        "fuse",
-        "rcd",
-        "elcb",
-    ]
-
-    analysis_evidence = [
-        "analysis",
-        "analyzed",
-        "analyse",
-        "analyze",
-        "findings",
-        "comparison",
-        "percentage",
-        "calculation",
-        "data analysis",
-        "survey results",
-        "results",
-        "observations",
-    ]
-
-    data_evidence = [
-        "data collection",
-        "data analysis",
-        "survey data",
-        "questionnaire",
-        "respondents",
-        "percentage",
-        "table",
-        "graph",
-        "chart",
-        "statistical",
-        "results",
-    ]
-
-    design_evidence = [
-        "designed",
-        "design",
-        "developed",
-        "development",
-        "prototype",
-        "circuit design",
-        "system design",
-        "model developed",
-        "fabricated",
-        "implemented",
-        "installation design",
-    ]
-
-    tool_evidence = [
-        "matlab",
-        "python",
-        "simulation",
-        "simulink",
-        "multimeter",
-        "clamp meter",
-        "megger",
-        "earth tester",
-        "measurement instrument",
-        "software tool",
-        "computer tool",
-        "cad",
-        "simulation software",
-    ]
-
-    sustainability_evidence = [
-        "sustainable",
-        "sustainability",
-        "renewable",
-        "solar",
-        "energy conservation",
-        "energy efficiency",
-        "environment",
-        "environmental impact",
-        "energy saving",
-    ]
-
-    ethics_evidence = [
-        "ethical",
-        "ethics",
-        "professional ethics",
-        "responsibility",
-        "responsible",
-        "permission",
-        "consent",
-        "respect",
-        "privacy",
-        "confidentiality",
-        "inclusive",
-    ]
-
-    teamwork_evidence = [
-        "team",
-        "team members",
-        "group",
-        "collaborated",
-        "collaboration",
-        "jointly",
-        "members",
-        "leader",
-        "leadership",
-    ]
-
-    communication_evidence = [
-        "awareness",
-        "explained",
-        "educated",
-        "communication",
-        "presentation",
-        "seminar",
-        "interaction",
-        "discussion",
-        "questionnaire",
-        "report",
-    ]
-
-    management_evidence = [
-        "project management",
-        "planning",
-        "schedule",
-        "scheduling",
-        "budget",
-        "cost estimation",
-        "finance",
-        "financial",
-        "resource management",
-        "resource allocation",
-        "procurement",
-        "time management",
-        "work plan",
-    ]
-
-    learning_evidence = [
-        "learning",
-        "learnt",
-        "learned",
-        "new technology",
-        "new technique",
-        "skill development",
-        "knowledge gained",
-        "future learning",
-        "self learning",
-        "lifelong learning",
-    ]
-
-    pso1_evidence = [
-        "electrical machine",
-        "motor",
-        "generator",
-        "transformer",
-        "control system",
-        "instrumentation",
-        "power system",
-        "power electronic",
-        "power electronics",
-    ]
-
-    pso2_evidence = [
-        "designed",
-        "design",
-        "developed",
-        "development",
-        "prototype",
-        "circuit design",
-        "system design",
-        "implemented",
-        "fabricated",
-        "electrical project",
-        "electronics project",
-    ]
-
-    pso3_evidence = [
-        "smart grid",
-        "power quality",
-        "advanced protection",
-        "control engineering",
-        "sustainable technology",
-        "renewable technology",
-        "solar technology",
-        "energy efficiency",
-        "modern technique",
-    ]
-
-    def set_score(row, index, value):
-
-        current = row[index]
-
-        order = {
-            "-": 0,
-            "1": 1,
-            "2": 2,
-            "3": 3,
-        }
-
-        if order[str(value)] > order[str(current)]:
-            row[index] = value
 
     matrix = []
 
+
     for co, _, _ in COS:
 
-        row = list(
-            baseline[co]
+        matrix.append(
+            list(
+                baseline[co]
+            )
         )
 
-        if co == "CO1":
-
-            if contains_any(
-                t,
-                community_evidence,
-            ):
-
-                set_score(row, 1, "3")
-                set_score(row, 5, "3")
-                set_score(row, 8, "2")
-
-            if contains_any(
-                t,
-                problem_evidence,
-            ):
-
-                set_score(row, 1, "3")
-
-            if contains_any(
-                t,
-                safety_evidence,
-            ):
-
-                set_score(row, 5, "3")
-                set_score(row, 6, "2")
-
-            if contains_any(
-                t,
-                electrical_evidence,
-            ):
-
-                set_score(row, 0, "2")
-                set_score(row, 11, "2")
-
-        elif co == "CO2":
-
-            electrical_strength = count_matches(
-                t,
-                electrical_evidence,
-            )
-
-            if electrical_strength >= 1:
-
-                set_score(row, 0, "3")
-                set_score(row, 1, "2")
-                set_score(row, 4, "3")
-
-            if electrical_strength >= 3:
-
-                set_score(row, 11, "3")
-
-            if contains_any(
-                t,
-                design_evidence,
-            ):
-
-                set_score(row, 2, "3")
-                set_score(row, 12, "2")
-
-            if contains_any(
-                t,
-                tool_evidence,
-            ):
-
-                set_score(row, 4, "3")
-
-            if contains_any(
-                t,
-                sustainability_evidence,
-            ):
-
-                set_score(row, 5, "2")
-                set_score(row, 13, "2")
-
-        elif co == "CO3":
-
-            if contains_any(
-                t,
-                problem_evidence,
-            ):
-
-                set_score(row, 1, "3")
-
-            if contains_any(
-                t,
-                analysis_evidence,
-            ):
-
-                set_score(row, 1, "3")
-                set_score(row, 3, "3")
-
-            if contains_any(
-                t,
-                data_evidence,
-            ):
-
-                set_score(row, 3, "3")
-                set_score(row, 4, "2")
-
-            if contains_any(
-                t,
-                design_evidence,
-            ):
-
-                set_score(row, 2, "3")
-                set_score(row, 12, "2")
-
-            if contains_any(
-                t,
-                tool_evidence,
-            ):
-
-                set_score(row, 4, "3")
-
-            if contains_any(
-                t,
-                sustainability_evidence,
-            ):
-
-                set_score(row, 5, "2")
-                set_score(row, 13, "2")
-
-            if contains_any(
-                t,
-                pso1_evidence,
-            ):
-
-                set_score(row, 11, "3")
-
-        elif co == "CO4":
-
-            if contains_any(
-                t,
-                community_evidence,
-            ):
-
-                set_score(row, 5, "3")
-
-            if contains_any(
-                t,
-                ethics_evidence,
-            ):
-
-                set_score(row, 6, "3")
-
-            if contains_any(
-                t,
-                teamwork_evidence,
-            ):
-
-                set_score(row, 7, "3")
-                set_score(row, 9, "2")
-
-            if contains_any(
-                t,
-                communication_evidence,
-            ):
-
-                set_score(row, 8, "3")
-
-            if contains_any(
-                t,
-                safety_evidence,
-            ):
-
-                set_score(row, 5, "3")
-
-            if (
-                contains_any(
-                    t,
-                    communication_evidence,
-                )
-                and contains_any(
-                    t,
-                    community_evidence,
-                )
-            ):
-
-                set_score(row, 8, "3")
-
-        elif co == "CO5":
-
-            report_evidence = [
-                "project report",
-                "technical report",
-                "report preparation",
-                "documentation",
-                "documentation of activities",
-            ]
-
-            presentation_evidence = [
-                "presentation",
-                "seminar",
-                "ppt",
-                "powerpoint",
-                "oral presentation",
-            ]
-
-            if contains_any(
-                t,
-                report_evidence,
-            ):
-
-                set_score(row, 8, "3")
-                set_score(row, 4, "2")
-
-            if contains_any(
-                t,
-                presentation_evidence,
-            ):
-
-                set_score(row, 8, "3")
-
-            if contains_any(
-                t,
-                data_evidence,
-            ):
-
-                set_score(row, 3, "2")
-
-            if contains_any(
-                t,
-                management_evidence,
-            ):
-
-                set_score(row, 9, "3")
-
-            if contains_any(
-                t,
-                learning_evidence,
-            ):
-
-                set_score(row, 10, "3")
-
-            if contains_any(
-                t,
-                design_evidence,
-            ):
-
-                set_score(row, 12, "2")
-
-            if contains_any(
-                t,
-                pso3_evidence,
-            ):
-
-                set_score(row, 13, "2")
-
-        matrix.append(row)
 
     return matrix
 
 
 # ============================================================
-# SECTION 4
-# PROJECT COMPONENT → SDG MAPPING
+# SECTION 4 — STRICT PROJECT COMPONENT → SDG MAPPING
 # ============================================================
 
-def map_sdg_components(components, text):
-
-    t = text.lower()
+def map_sdg_components(
+    components,
+    text,
+):
 
     rows = []
 
+
     for component in components:
 
-        c = component.lower()
+        vals = {}
 
-        vals = {
-            n: "-"
-            for n in range(1, 18)
-        }
 
         # ----------------------------------------------------
-        # SDG 4 — Education
+        # Electrical Safety and Shock Prevention
         # ----------------------------------------------------
 
-        education = [
-            "awareness",
-            "education",
-            "training",
-            "demonstration",
-            "seminar",
-            "explained",
-            "educated",
-        ]
+        if component == "Electrical Safety and Shock Prevention":
 
-        if contains_any(
-            c,
-            education,
-        ):
-
-            vals[4] = "3"
-
-        # ----------------------------------------------------
-        # SDG 3 — Health / safety
-        # ----------------------------------------------------
-
-        safety = [
-            "safety",
-            "wiring",
-            "earthing",
-            "grounding",
-            "protective",
-            "electrical protection",
-        ]
-
-        if contains_any(
-            c,
-            safety,
-        ):
-
-            vals[3] = "2"
-
-        # ----------------------------------------------------
-        # SDG 7 — Energy
-        # ----------------------------------------------------
-
-        energy = [
-            "energy",
-            "electricity",
-            "solar",
-            "renewable",
-            "power",
-        ]
-
-        if contains_any(
-            c,
-            energy,
-        ):
-
-            vals[7] = "3"
-
-        # ----------------------------------------------------
-        # SDG 9 — Infrastructure / innovation
-        # ----------------------------------------------------
-
-        infrastructure = [
-            "wiring",
-            "earthing",
-            "grounding",
-            "protective devices",
-            "electrical protection",
-            "design",
-            "prototype",
-            "system",
-        ]
-
-        if contains_any(
-            c,
-            infrastructure,
-        ):
-
+            vals[3] = "3"
             vals[9] = "2"
+            vals[11] = "3"
+
 
         # ----------------------------------------------------
-        # SDG 11 — Safe communities
+        # Electrical Earthing Awareness
         # ----------------------------------------------------
 
-        if contains_any(
-            c,
-            [
-                "community",
-                "survey",
-                "safety",
-                "wiring",
-                "earthing",
-                "grounding",
-                "protective",
-            ],
-        ):
+        elif component == "Electrical Earthing Awareness":
 
+            vals[3] = "3"
+            vals[9] = "2"
+            vals[11] = "3"
+
+
+        # ----------------------------------------------------
+        # Household Electrical Wiring and Earthing
+        # ----------------------------------------------------
+
+        elif component == "Household Electrical Wiring and Earthing":
+
+            vals[3] = "3"
+            vals[9] = "3"
+            vals[11] = "3"
+
+
+        # ----------------------------------------------------
+        # Agricultural Electrical Installations
+        # ----------------------------------------------------
+
+        elif component == "Agricultural Electrical Installations and Pump-Set Earthing":
+
+            vals[3] = "3"
+            vals[9] = "3"
             vals[11] = "2"
 
-        # ----------------------------------------------------
-        # SDG 12 — Responsible consumption
-        # ----------------------------------------------------
-
-        if contains_any(
-            c,
-            [
-                "energy conservation",
-                "efficient use",
-                "energy efficiency",
-                "energy saving",
-            ],
-        ):
-
-            vals[12] = "3"
 
         # ----------------------------------------------------
-        # SDG 13 — Climate action
+        # Earthing Installation and Maintenance
         # ----------------------------------------------------
 
-        if contains_any(
-            c,
-            [
-                "solar",
-                "renewable",
-                "energy efficiency",
-                "energy conservation",
-                "environment",
-                "sustainability",
-            ],
-        ):
+        elif component == "Earthing Installation and Maintenance":
 
-            vals[13] = "2"
+            vals[3] = "3"
+            vals[9] = "3"
+            vals[11] = "2"
+
 
         # ----------------------------------------------------
-        # SDG 15 — Terrestrial ecosystems
+        # Fault Protection and Protective Devices
         # ----------------------------------------------------
 
-        if contains_any(
-            c,
-            [
-                "environmental activity",
-                "environment protection",
-                "ecosystem",
-                "tree plantation",
-                "biodiversity",
-            ],
-        ):
+        elif component == "Fault Protection and Protective Devices":
 
-            vals[15] = "2"
+            vals[3] = "3"
+            vals[9] = "3"
+            vals[11] = "3"
+
 
         # ----------------------------------------------------
-        # SDG 16 — Peaceful/inclusive institutions
+        # Earth Resistance Testing
         # ----------------------------------------------------
 
-        if contains_any(
-            c,
-            [
-                "community interaction",
-                "village meeting",
-                "public meeting",
-            ],
-        ):
+        elif component == "Earth Resistance Testing":
 
-            vals[16] = "1"
+            vals[3] = "3"
+            vals[9] = "3"
+            vals[11] = "2"
+
 
         # ----------------------------------------------------
-        # Additional evidence from full project text
+        # Safe Electrical Wiring Practices
         # ----------------------------------------------------
 
-        if "survey" in c:
+        elif component == "Safe Electrical Wiring Practices":
 
-            if contains_any(
-                t,
-                [
-                    "data analysis",
-                    "survey analysis",
-                    "percentage",
-                    "survey results",
-                ],
-            ):
+            vals[3] = "3"
+            vals[9] = "2"
+            vals[11] = "3"
 
-                vals[4] = max_level(
-                    vals[4],
-                    "2",
+
+        # ----------------------------------------------------
+        # Fallback
+        # ----------------------------------------------------
+
+        elif component == "Electrical Earthing System":
+
+            vals[3] = "3"
+            vals[9] = "3"
+            vals[11] = "3"
+
+
+        if vals:
+
+            rows.append(
+                (
+                    component,
+                    vals
                 )
-
-        rows.append(
-            (
-                component,
-                vals,
             )
-        )
+
 
     return rows
 
 
 # ============================================================
-# PDF TEXT HELPER
+# FIND COMMON SDGs
+#
+# AN SDG IS DISPLAYED ONLY WHEN EVERY COMPONENT MAPS TO IT.
 # ============================================================
 
-def P(txt, style):
+def get_common_sdgs(sdg_rows):
 
-    text = str(txt)
+    if not sdg_rows:
 
-    text = text.replace(
-        "&nbsp;",
-        " ",
+        return []
+
+
+    common_sdgs = []
+
+
+    for sdg_number in range(1, 18):
+
+        mapped_by_every_component = all(
+
+            vals.get(sdg_number)
+            in {"1", "2", "3"}
+
+            for _, vals in sdg_rows
+        )
+
+
+        if mapped_by_every_component:
+
+            common_sdgs.append(
+                sdg_number
+            )
+
+
+    return common_sdgs
+
+
+# ============================================================
+# VALIDATE FINAL SECTION 4 MATRIX
+#
+# MINIMUM 3 COMMON SDGs REQUIRED.
+# ============================================================
+
+def get_valid_sdg_rows(sdg_rows):
+
+    if not sdg_rows:
+
+        return [], []
+
+
+    common_sdgs = get_common_sdgs(
+        sdg_rows
     )
 
-    text = text.replace(
-        "&",
-        "&amp;",
+
+    # --------------------------------------------------------
+    # Minimum 3 common SDGs.
+    # --------------------------------------------------------
+
+    if len(common_sdgs) < 3:
+
+        return [], []
+
+
+    valid_rows = []
+
+
+    for component, vals in sdg_rows:
+
+        if all(
+            vals.get(sdg)
+            in {"1", "2", "3"}
+            for sdg in common_sdgs
+        ):
+
+            valid_rows.append(
+                (
+                    component,
+                    vals
+                )
+            )
+
+
+    # --------------------------------------------------------
+    # Every detected component must participate.
+    # --------------------------------------------------------
+
+    if len(valid_rows) != len(sdg_rows):
+
+        return [], []
+
+
+    return (
+        valid_rows,
+        common_sdgs
     )
 
-    text = text.replace(
-        "&lt;b&gt;",
-        "<b>",
-    )
 
-    text = text.replace(
-        "&lt;/b&gt;",
-        "</b>",
-    )
+# ============================================================
+# REPORTLAB PARAGRAPH HELPER
+# ============================================================
+
+def P(
+    txt,
+    style,
+):
 
     return Paragraph(
-        text,
-        style,
+        str(txt),
+        style
     )
 
 
 # ============================================================
-# BUILD PDF
+# BUILD FINAL PDF
+#
+# IMPORTANT:
+# NO BORDER
+# NO PAGE NUMBER
+# NO DEPARTMENT FOOTER
 # ============================================================
 
 def build_pdf(
@@ -1369,6 +872,7 @@ def build_pdf(
 
     buf = io.BytesIO()
 
+
     doc = SimpleDocTemplate(
         buf,
         pagesize=A4,
@@ -1378,7 +882,9 @@ def build_pdf(
         bottomMargin=12 * mm,
     )
 
+
     styles = getSampleStyleSheet()
+
 
     title = ParagraphStyle(
         "title",
@@ -1389,6 +895,7 @@ def build_pdf(
         spaceAfter=8,
     )
 
+
     h = ParagraphStyle(
         "h",
         parent=styles["Heading2"],
@@ -1398,12 +905,14 @@ def build_pdf(
         spaceAfter=6,
     )
 
+
     body = ParagraphStyle(
         "body",
         parent=styles["BodyText"],
         fontSize=8.5,
         leading=11,
     )
+
 
     small = ParagraphStyle(
         "small",
@@ -1412,7 +921,9 @@ def build_pdf(
         leading=9,
     )
 
+
     story = []
+
 
     # ========================================================
     # TITLE
@@ -1421,28 +932,18 @@ def build_pdf(
     story.append(
         P(
             "CO-PO-PSO & WK-PO-PSO Mapping",
-            title,
+            title
         )
     )
 
-    # ========================================================
-    # REMOVED:
-    #
-    # story.append(
-    #     P(
-    #         "COMMUNITY SERVICE PROJECT",
-    #         title,
-    #     )
-    # )
-    #
-    # ========================================================
 
     story.append(
         Spacer(
             1,
-            4,
+            4
         )
     )
+
 
     # ========================================================
     # SECTION 1
@@ -1451,16 +952,18 @@ def build_pdf(
     story.append(
         P(
             "1) Course Outcomes:",
-            h,
+            h
         )
     )
+
 
     story.append(
         P(
             "On successful completion of the Community Service Project, the student will be able to:",
-            body,
+            body
         )
     )
+
 
     data = [
         [
@@ -1469,6 +972,7 @@ def build_pdf(
             P("Bloom's Level", small),
         ]
     ]
+
 
     for co, desc, bloom in COS:
 
@@ -1480,6 +984,7 @@ def build_pdf(
             ]
         )
 
+
     tbl = Table(
         data,
         colWidths=[
@@ -1489,6 +994,7 @@ def build_pdf(
         ],
         repeatRows=1,
     )
+
 
     tbl.setStyle(
         TableStyle(
@@ -1552,14 +1058,17 @@ def build_pdf(
         )
     )
 
+
     story.append(tbl)
+
 
     story.append(
         Spacer(
             1,
-            8,
+            8
         )
     )
+
 
     # ========================================================
     # SECTION 2
@@ -1568,9 +1077,10 @@ def build_pdf(
     story.append(
         P(
             "2) COs Vs POs and PSOs:",
-            h,
+            h
         )
     )
+
 
     data = [
         [P("CO", small)]
@@ -1579,6 +1089,7 @@ def build_pdf(
             for x in HEADERS
         ]
     ]
+
 
     for (co, _, _), row in zip(
         COS,
@@ -1593,6 +1104,7 @@ def build_pdf(
             ]
         )
 
+
     tbl = Table(
         data,
         colWidths=[
@@ -1603,6 +1115,7 @@ def build_pdf(
         ] * 14,
         repeatRows=1,
     )
+
 
     tbl.setStyle(
         TableStyle(
@@ -1648,25 +1161,30 @@ def build_pdf(
         )
     )
 
+
     story.append(tbl)
+
 
     story.append(
         Spacer(
             1,
-            5,
+            5
         )
     )
+
 
     story.append(
         P(
             "Scale: 3 = High    2 = Medium    1 = Low    - = No mapping",
-            small,
+            small
         )
     )
+
 
     story.append(
         PageBreak()
     )
+
 
     # ========================================================
     # SECTION 3
@@ -1675,9 +1193,10 @@ def build_pdf(
     story.append(
         P(
             "3) Knowledge and Attitude Profile Vs Program Outcomes and Program Specific Outcomes",
-            h,
+            h
         )
     )
+
 
     data = [
         [P("", small)]
@@ -1686,6 +1205,7 @@ def build_pdf(
             for x in HEADERS
         ]
     ]
+
 
     for (wk, _), row in zip(
         WKS,
@@ -1700,6 +1220,7 @@ def build_pdf(
             ]
         )
 
+
     tbl = Table(
         data,
         colWidths=[
@@ -1710,6 +1231,7 @@ def build_pdf(
         ] * 14,
         repeatRows=1,
     )
+
 
     tbl.setStyle(
         TableStyle(
@@ -1740,40 +1262,45 @@ def build_pdf(
                     "MIDDLE",
                 ),
                 (
-                    "FONTSIZE",
-                    (0, 0),
-                    (-1, -1),
-                    6,
-                ),
-                (
                     "FONTNAME",
                     (0, 0),
                     (-1, 0),
                     "Helvetica-Bold",
                 ),
+                (
+                    "FONTSIZE",
+                    (0, 0),
+                    (-1, -1),
+                    6,
+                ),
             ]
         )
     )
 
+
     story.append(tbl)
+
 
     story.append(
         Spacer(
             1,
-            5,
+            5
         )
     )
+
 
     story.append(
         P(
             "Scale: 3 = High    2 = Medium    1 = Low",
-            small,
+            small
         )
     )
+
 
     story.append(
         PageBreak()
     )
+
 
     # ========================================================
     # SECTION 4
@@ -1782,102 +1309,101 @@ def build_pdf(
     story.append(
         P(
             "4) SDGs Vs Community Service Project Components:",
-            h,
+            h
         )
     )
 
-    # ========================================================
-    # REMOVED:
-    #
-    # story.append(
-    #     P(
-    #         f"<b>Community Service Project:</b> {project_title}",
-    #         body,
-    #     )
-    # )
-    #
-    # ========================================================
 
     story.append(
         Spacer(
             1,
-            5,
+            5
         )
     )
 
-    matched_sdgs = []
 
-    for n in range(1, 18):
+    # --------------------------------------------------------
+    # STRICT COMMON SDG CALCULATION
+    # --------------------------------------------------------
 
-        if any(
-            vals.get(n, "-")
-            in {"1", "2", "3"}
-            for _, vals in sdg_rows
-        ):
+    valid_sdg_rows, matched_sdgs = get_valid_sdg_rows(
+        sdg_rows
+    )
 
-            matched_sdgs.append(n)
 
-    if not matched_sdgs:
+    # --------------------------------------------------------
+    # FINAL SECTION 4 TABLE
+    # --------------------------------------------------------
 
-        story.append(
-            P(
-                "No SDG mapping was supported by sufficient project evidence.",
-                body,
-            )
-        )
-
-    else:
+    if valid_sdg_rows and matched_sdgs:
 
         data = [
             [
                 P(
-                    "Project Components",
-                    small,
+                    "Project Component",
+                    small
                 )
             ]
             + [
                 P(
                     f"SDG {n}",
-                    small,
+                    small
                 )
                 for n in matched_sdgs
             ]
         ]
 
-        for component, vals in sdg_rows:
+
+        # ----------------------------------------------------
+        # Every cell contains 1 / 2 / 3.
+        # No "-" and no blank cells.
+        # ----------------------------------------------------
+
+        for component, vals in valid_sdg_rows:
+
+            row = [
+                P(
+                    component,
+                    small
+                )
+            ]
+
+
+            for n in matched_sdgs:
+
+                row.append(
+                    P(
+                        vals[n],
+                        small
+                    )
+                )
+
 
             data.append(
-                [
-                    P(
-                        component,
-                        small,
-                    )
-                ]
-                + [
-                    P(
-                        vals.get(n, "-"),
-                        small,
-                    )
-                    for n in matched_sdgs
-                ]
+                row
             )
 
-        component_width = 62 * mm
+
+        # ----------------------------------------------------
+        # TABLE WIDTH
+        # ----------------------------------------------------
+
+        component_width = 68 * mm
 
         available_width = (
-            A4[0]
-            - 24 * mm
+            A4[0] - 24 * mm
         )
 
-        remaining = (
+        remaining_width = (
             available_width
             - component_width
         )
 
         sdg_width = (
-            remaining
+            remaining_width
             / len(matched_sdgs)
         )
+
 
         tbl = Table(
             data,
@@ -1889,6 +1415,7 @@ def build_pdf(
             ] * len(matched_sdgs),
             repeatRows=1,
         )
+
 
         tbl.setStyle(
             TableStyle(
@@ -1907,22 +1434,28 @@ def build_pdf(
                         colors.whitesmoke,
                     ),
                     (
-                        "VALIGN",
-                        (0, 0),
-                        (-1, -1),
-                        "MIDDLE",
-                    ),
-                    (
-                        "ALIGN",
-                        (1, 1),
-                        (-1, -1),
-                        "CENTER",
-                    ),
-                    (
                         "FONTNAME",
                         (0, 0),
                         (-1, 0),
                         "Helvetica-Bold",
+                    ),
+                    (
+                        "ALIGN",
+                        (0, 0),
+                        (-1, -1),
+                        "CENTER",
+                    ),
+                    (
+                        "ALIGN",
+                        (0, 1),
+                        (0, -1),
+                        "LEFT",
+                    ),
+                    (
+                        "VALIGN",
+                        (0, 0),
+                        (-1, -1),
+                        "MIDDLE",
                     ),
                     (
                         "FONTSIZE",
@@ -1934,13 +1467,13 @@ def build_pdf(
                         "LEFTPADDING",
                         (0, 0),
                         (-1, -1),
-                        3,
+                        4,
                     ),
                     (
                         "RIGHTPADDING",
                         (0, 0),
                         (-1, -1),
-                        3,
+                        4,
                     ),
                     (
                         "TOPPADDING",
@@ -1958,27 +1491,50 @@ def build_pdf(
             )
         )
 
+
         story.append(tbl)
+
 
         story.append(
             Spacer(
                 1,
-                6,
+                6
             )
         )
+
 
         story.append(
             P(
-                "Mapping scale: 3 = High    2 = Medium    1 = Low    - = No contribution",
-                small,
+                "Mapping scale: 3 = High    2 = Medium    1 = Low",
+                small
             )
         )
 
+
+    else:
+
+        story.append(
+            P(
+                "No minimum three common SDG mappings were identified across all project components.",
+                body
+            )
+        )
+
+
     # ========================================================
-    # BUILD DOCUMENT
+    # BUILD PDF
+    #
+    # NO onFirstPage
+    # NO onLaterPages
+    # NO BORDER
+    # NO PAGE NUMBER
+    # NO FOOTER
     # ========================================================
 
-    doc.build(story)
+    doc.build(
+        story
+    )
+
 
     buf.seek(0)
 
@@ -1986,12 +1542,13 @@ def build_pdf(
 
 
 # ============================================================
-# USER INTERFACE
+# STREAMLIT UI
 # ============================================================
 
 st.title(
     "📘 CSP Outcome Mapping Generator"
 )
+
 
 st.caption(
     "Upload one Community Service Project book → "
@@ -2015,7 +1572,10 @@ uploaded = st.file_uploader(
 
 if uploaded:
 
-    text = extract_text(uploaded)
+    text = extract_text(
+        uploaded
+    )
+
 
     if not text.strip():
 
@@ -2026,29 +1586,54 @@ if uploaded:
 
         st.stop()
 
-    cleaned = clean_text(text)
+
+    cleaned = clean_text(
+        text
+    )
+
+
+    # ========================================================
+    # PROJECT TITLE
+    # ========================================================
 
     project_title = extract_title(
         text
     )
 
+
+    # ========================================================
+    # PROJECT COMPONENTS
+    # ========================================================
+
     components = detect_components(
         text
     )
+
+
+    # ========================================================
+    # SECTION 2
+    # ========================================================
 
     co_matrix = map_co_matrix(
         cleaned
     )
 
+
+    # ========================================================
+    # SECTION 4
+    # ========================================================
+
     sdg_rows = map_sdg_components(
         components,
-        cleaned,
+        cleaned
     )
+
 
     st.success(
         f"Project book extracted successfully. "
         f"Detected {len(text):,} characters."
     )
+
 
     # ========================================================
     # EXTRACTED INFORMATION
@@ -2063,10 +1648,26 @@ if uploaded:
             f"**Detected title:** {project_title}"
         )
 
+
         st.write(
-            f"**Detected components:** "
-            f"{', '.join(components)}"
+            "**Detected relevant project components:**"
         )
+
+
+        if components:
+
+            for component in components:
+
+                st.write(
+                    f"- {component}"
+                )
+
+        else:
+
+            st.write(
+                "No specific project components detected."
+            )
+
 
         st.text_area(
             "Extracted text preview",
@@ -2074,19 +1675,22 @@ if uploaded:
             height=250,
         )
 
+
     # ========================================================
-    # COMPONENT EDITING
+    # COMPONENT EDITOR
     # ========================================================
 
     st.subheader(
         "Project components used for Section 4"
     )
 
+
     edited = st.text_area(
-        "One component per line. You may correct/add components before generating.",
+        "Only relevant project-specific components should be kept. One component per line.",
         "\n".join(components),
         height=180,
     )
+
 
     components = [
         x.strip()
@@ -2094,10 +1698,13 @@ if uploaded:
         if x.strip()
     ]
 
+
+    # Recalculate Section 4
     sdg_rows = map_sdg_components(
         components,
-        cleaned,
+        cleaned
     )
+
 
     # ========================================================
     # SECTION 2 PREVIEW
@@ -2107,12 +1714,14 @@ if uploaded:
         "Section 2 — CO → PO/PSO mapping"
     )
 
+
     section2_data = {
         "CO": [
             co[0]
             for co in COS
         ]
     }
+
 
     for i, header in enumerate(
         HEADERS
@@ -2123,50 +1732,92 @@ if uploaded:
             for row in range(5)
         ]
 
+
     st.dataframe(
-        section2_data,
+        pd.DataFrame(
+            section2_data
+        ),
         use_container_width=True,
         hide_index=True,
     )
 
+
     # ========================================================
     # SECTION 4 PREVIEW
+    #
+    # SAME STRICT RULE AS PDF
     # ========================================================
 
     st.subheader(
         "Section 4 — Project Components → SDGs"
     )
 
-    for component, vals in sdg_rows:
 
-        selected = [
-            (
-                f"SDG {n}",
-                value,
+    valid_sdg_rows, preview_sdgs = get_valid_sdg_rows(
+        sdg_rows
+    )
+
+
+    if valid_sdg_rows and preview_sdgs:
+
+        preview_rows = []
+
+
+        for component, vals in valid_sdg_rows:
+
+            row = {
+                "Project Component": component
+            }
+
+
+            for n in preview_sdgs:
+
+                row[
+                    f"SDG {n}"
+                ] = vals[n]
+
+
+            preview_rows.append(
+                row
             )
-            for n, value in vals.items()
-            if value in {"1", "2", "3"}
-        ]
 
-        if selected:
 
-            st.write(
-                f"**{component}:** "
-                + ", ".join(
-                    f"{sdg}={value}"
-                    for sdg, value in selected
-                )
-            )
+        # Explicit column names prevent the old
+        # 0, 1, 2, 3, 4 problem.
 
-        else:
+        df_preview = pd.DataFrame(
+            preview_rows,
+            columns=[
+                "Project Component"
+            ]
+            + [
+                f"SDG {n}"
+                for n in preview_sdgs
+            ]
+        )
 
-            st.write(
-                f"**{component}:** "
-                "No contribution identified"
-            )
+
+        st.dataframe(
+            df_preview,
+            use_container_width=True,
+            hide_index=True,
+        )
+
+
+        st.caption(
+            "Only SDGs mapped by EVERY project component are displayed."
+        )
+
+
+    else:
+
+        st.warning(
+            "At least 3 common SDGs mapped by every project component are required."
+        )
+
 
     # ========================================================
-    # GENERATE PDF
+    # GENERATE FINAL PDF
     # ========================================================
 
     if st.button(
@@ -2183,9 +1834,11 @@ if uploaded:
                 sdg_rows,
             )
 
+
             st.success(
                 "Final CSP PDF generated successfully."
             )
+
 
             st.download_button(
                 label="⬇️ Download Final PDF",
@@ -2194,6 +1847,7 @@ if uploaded:
                 mime="application/pdf",
                 key="download_final_csp_pdf",
             )
+
 
         except Exception as e:
 
@@ -2211,6 +1865,3 @@ else:
     st.info(
         "Start by uploading your CSP project book PDF."
     )
-
-   
-    
