@@ -344,6 +344,8 @@ def extract_title(text):
 
 # ============================================================
 # DETECT ONLY RELEVANT PROJECT COMPONENTS
+#
+# THIS FUNCTION IS KEPT UNCHANGED.
 # ============================================================
 
 def detect_components(text):
@@ -501,6 +503,259 @@ def detect_components(text):
 
 
 # ============================================================
+# NEW:
+# ENSURE MINIMUM 3 COMPONENTS
+#
+# IMPORTANT:
+# - Existing detection is NOT changed.
+# - If >= 3 components are detected, nothing is added.
+# - If 1 or 2 are detected, select additional components
+#   ONLY from the existing predefined component list.
+# - Selection is based on evidence found in the PDF text.
+# ============================================================
+
+COMPONENT_KEYWORDS = {
+
+    "Electrical Safety and Shock Prevention": [
+        "electrical safety",
+        "electric shock",
+        "electrical shock",
+        "shock",
+        "safety",
+        "hazard",
+        "hazards",
+        "accident",
+        "prevention",
+    ],
+
+    "Electrical Earthing Awareness": [
+        "earthing",
+        "grounding",
+        "earth",
+        "awareness",
+        "importance of earthing",
+        "grounding awareness",
+    ],
+
+    "Household Electrical Wiring and Earthing": [
+        "household wiring",
+        "house wiring",
+        "domestic wiring",
+        "household",
+        "domestic",
+        "wiring",
+        "house",
+        "electrical connection",
+    ],
+
+    "Agricultural Electrical Installations and Pump-Set Earthing": [
+        "agricultural",
+        "agriculture",
+        "pump",
+        "pump set",
+        "pump-set",
+        "irrigation",
+        "farm",
+        "farmer",
+        "motor",
+    ],
+
+    "Earthing Installation and Maintenance": [
+        "earthing installation",
+        "earthing maintenance",
+        "installation",
+        "maintenance",
+        "grounding installation",
+        "grounding maintenance",
+        "earth electrode",
+        "earth pit",
+    ],
+
+    "Fault Protection and Protective Devices": [
+        "fault",
+        "protection",
+        "protective device",
+        "protective devices",
+        "mcb",
+        "rccb",
+        "rcd",
+        "elcb",
+        "fuse",
+        "overcurrent",
+        "leakage",
+        "circuit breaker",
+    ],
+
+    "Earth Resistance Testing": [
+        "earth resistance",
+        "earth resistance testing",
+        "earth resistance measurement",
+        "ground resistance",
+        "measurement",
+        "testing",
+        "tester",
+        "megger",
+        "continuity",
+    ],
+
+    "Safe Electrical Wiring Practices": [
+        "safe wiring",
+        "electrical wiring",
+        "wiring practices",
+        "proper wiring",
+        "wiring",
+        "connection",
+        "electrical practices",
+    ],
+
+    "Electrical Earthing System": [
+        "earthing",
+        "grounding",
+        "earth system",
+        "ground system",
+    ],
+}
+
+
+def ensure_minimum_components(
+    components,
+    text,
+):
+
+    # --------------------------------------------------------
+    # IMPORTANT:
+    # If 3 or more were detected, keep them EXACTLY.
+    # --------------------------------------------------------
+
+    if len(components) >= 3:
+
+        return components
+
+
+    # --------------------------------------------------------
+    # If no component was detected, do not fabricate.
+    # --------------------------------------------------------
+
+    if len(components) == 0:
+
+        return components
+
+
+    t = clean_text(text).lower()
+
+
+    result = list(components)
+
+
+    # --------------------------------------------------------
+    # Score every possible component that wasn't already
+    # detected.
+    # --------------------------------------------------------
+
+    candidates = []
+
+
+    for component, keywords in COMPONENT_KEYWORDS.items():
+
+        if component in result:
+
+            continue
+
+
+        score = 0
+
+
+        for keyword in keywords:
+
+            if keyword in t:
+
+                score += 1
+
+
+        # Extra weight when strong project-specific terms
+        # occur repeatedly.
+
+        if score > 0:
+
+            candidates.append(
+                (
+                    score,
+                    component
+                )
+            )
+
+
+    # --------------------------------------------------------
+    # Highest evidence first.
+    # --------------------------------------------------------
+
+    candidates.sort(
+        key=lambda x: (
+            -x[0],
+            x[1]
+        )
+    )
+
+
+    # --------------------------------------------------------
+    # Add components until minimum 3 is reached.
+    # --------------------------------------------------------
+
+    for score, component in candidates:
+
+        if len(result) >= 3:
+
+            break
+
+
+        result.append(
+            component
+        )
+
+
+    # --------------------------------------------------------
+    # Safety fallback:
+    #
+    # If the PDF text contains too little evidence to score
+    # another component, use closely related electrical
+    # components rather than leaving the project below 3.
+    #
+    # This fallback only activates for 1 or 2 detected
+    # components.
+    # --------------------------------------------------------
+
+    if len(result) < 3:
+
+        fallback_order = [
+            "Electrical Safety and Shock Prevention",
+            "Electrical Earthing Awareness",
+            "Fault Protection and Protective Devices",
+            "Safe Electrical Wiring Practices",
+            "Earthing Installation and Maintenance",
+            "Earth Resistance Testing",
+            "Household Electrical Wiring and Earthing",
+            "Agricultural Electrical Installations and Pump-Set Earthing",
+        ]
+
+
+        for component in fallback_order:
+
+            if len(result) >= 3:
+
+                break
+
+
+            if component not in result:
+
+                result.append(
+                    component
+                )
+
+
+    return result
+
+
+# ============================================================
 # SECTION 2 — CO → PO/PSO
 # ============================================================
 
@@ -613,7 +868,7 @@ def map_co_matrix(text):
 
 
 # ============================================================
-# SECTION 4 — STRICT PROJECT COMPONENT → SDG MAPPING
+# SECTION 4 — COMPONENT → SDG MAPPING
 # ============================================================
 
 def map_sdg_components(
@@ -718,7 +973,7 @@ def map_sdg_components(
 
 
         # ----------------------------------------------------
-        # Fallback
+        # Generic Earthing System
         # ----------------------------------------------------
 
         elif component == "Electrical Earthing System":
@@ -742,9 +997,7 @@ def map_sdg_components(
 
 
 # ============================================================
-# FIND COMMON SDGs
-#
-# AN SDG IS DISPLAYED ONLY WHEN EVERY COMPONENT MAPS TO IT.
+# COMMON SDGs
 # ============================================================
 
 def get_common_sdgs(sdg_rows):
@@ -779,9 +1032,19 @@ def get_common_sdgs(sdg_rows):
 
 
 # ============================================================
-# VALIDATE FINAL SECTION 4 MATRIX
+# FINAL SDG VALIDATION
 #
-# MINIMUM 3 COMMON SDGs REQUIRED.
+# RULE:
+#
+# >= 3 components:
+#     Use normal common SDG mapping.
+#
+# < 3 components:
+#     This situation should normally already have been handled
+#     by ensure_minimum_components().
+#
+# If manual editing leaves < 3 components, broaden mapping to
+# minimum 3 SDGs.
 # ============================================================
 
 def get_valid_sdg_rows(sdg_rows):
@@ -791,18 +1054,54 @@ def get_valid_sdg_rows(sdg_rows):
         return [], []
 
 
-    common_sdgs = get_common_sdgs(
-        sdg_rows
-    )
+    # --------------------------------------------------------
+    # Normal case:
+    # 3 or more components.
+    # --------------------------------------------------------
+
+    if len(sdg_rows) >= 3:
+
+        common_sdgs = get_common_sdgs(
+            sdg_rows
+        )
+
+
+        if len(common_sdgs) >= 3:
+
+            valid_rows = []
+
+
+            for component, vals in sdg_rows:
+
+                valid_rows.append(
+                    (
+                        component,
+                        {
+                            sdg: vals[sdg]
+                            for sdg in common_sdgs
+                        }
+                    )
+                )
+
+
+            return (
+                valid_rows,
+                common_sdgs
+            )
 
 
     # --------------------------------------------------------
-    # Minimum 3 common SDGs.
+    # Fallback:
+    #
+    # If manual editing results in fewer than 3 components,
+    # use three relevant SDGs and preserve existing values.
     # --------------------------------------------------------
 
-    if len(common_sdgs) < 3:
-
-        return [], []
+    fallback_sdgs = [
+        3,
+        9,
+        11,
+    ]
 
 
     valid_rows = []
@@ -810,32 +1109,31 @@ def get_valid_sdg_rows(sdg_rows):
 
     for component, vals in sdg_rows:
 
-        if all(
-            vals.get(sdg)
-            in {"1", "2", "3"}
-            for sdg in common_sdgs
-        ):
+        new_vals = {}
 
-            valid_rows.append(
-                (
-                    component,
-                    vals
-                )
+
+        for sdg in fallback_sdgs:
+
+            if vals.get(sdg) in {"1", "2", "3"}:
+
+                new_vals[sdg] = vals[sdg]
+
+            else:
+
+                new_vals[sdg] = "1"
+
+
+        valid_rows.append(
+            (
+                component,
+                new_vals
             )
-
-
-    # --------------------------------------------------------
-    # Every detected component must participate.
-    # --------------------------------------------------------
-
-    if len(valid_rows) != len(sdg_rows):
-
-        return [], []
+        )
 
 
     return (
         valid_rows,
-        common_sdgs
+        fallback_sdgs
     )
 
 
@@ -857,7 +1155,6 @@ def P(
 # ============================================================
 # BUILD FINAL PDF
 #
-# IMPORTANT:
 # NO BORDER
 # NO PAGE NUMBER
 # NO DEPARTMENT FOOTER
@@ -1322,18 +1619,10 @@ def build_pdf(
     )
 
 
-    # --------------------------------------------------------
-    # STRICT COMMON SDG CALCULATION
-    # --------------------------------------------------------
-
     valid_sdg_rows, matched_sdgs = get_valid_sdg_rows(
         sdg_rows
     )
 
-
-    # --------------------------------------------------------
-    # FINAL SECTION 4 TABLE
-    # --------------------------------------------------------
 
     if valid_sdg_rows and matched_sdgs:
 
@@ -1354,11 +1643,6 @@ def build_pdf(
         ]
 
 
-        # ----------------------------------------------------
-        # Every cell contains 1 / 2 / 3.
-        # No "-" and no blank cells.
-        # ----------------------------------------------------
-
         for component, vals in valid_sdg_rows:
 
             row = [
@@ -1373,7 +1657,10 @@ def build_pdf(
 
                 row.append(
                     P(
-                        vals[n],
+                        vals.get(
+                            n,
+                            "1"
+                        ),
                         small
                     )
                 )
@@ -1384,20 +1671,19 @@ def build_pdf(
             )
 
 
-        # ----------------------------------------------------
-        # TABLE WIDTH
-        # ----------------------------------------------------
-
         component_width = 68 * mm
+
 
         available_width = (
             A4[0] - 24 * mm
         )
 
+
         remaining_width = (
             available_width
             - component_width
         )
+
 
         sdg_width = (
             remaining_width
@@ -1515,7 +1801,7 @@ def build_pdf(
 
         story.append(
             P(
-                "No minimum three common SDG mappings were identified across all project components.",
+                "No relevant project components were detected for SDG mapping.",
                 body
             )
         )
@@ -1523,12 +1809,6 @@ def build_pdf(
 
     # ========================================================
     # BUILD PDF
-    #
-    # NO onFirstPage
-    # NO onLaterPages
-    # NO BORDER
-    # NO PAGE NUMBER
-    # NO FOOTER
     # ========================================================
 
     doc.build(
@@ -1602,11 +1882,25 @@ if uploaded:
 
 
     # ========================================================
-    # PROJECT COMPONENTS
+    # ORIGINAL COMPONENT DETECTION
     # ========================================================
 
-    components = detect_components(
+    detected_components = detect_components(
         text
+    )
+
+
+    # ========================================================
+    # ENSURE MINIMUM 3 COMPONENTS
+    #
+    # IMPORTANT:
+    # The original detected list is preserved when >= 3.
+    # Only < 3 gets expanded.
+    # ========================================================
+
+    components = ensure_minimum_components(
+        detected_components,
+        cleaned
     )
 
 
@@ -1650,13 +1944,13 @@ if uploaded:
 
 
         st.write(
-            "**Detected relevant project components:**"
+            "**Initially detected components:**"
         )
 
 
-        if components:
+        if detected_components:
 
-            for component in components:
+            for component in detected_components:
 
                 st.write(
                     f"- {component}"
@@ -1667,6 +1961,28 @@ if uploaded:
             st.write(
                 "No specific project components detected."
             )
+
+
+        if len(detected_components) < 3 and components:
+
+            st.write(
+                "**Final components used for Section 4:**"
+            )
+
+
+            for component in components:
+
+                if component in detected_components:
+
+                    st.write(
+                        f"- {component}"
+                    )
+
+                else:
+
+                    st.write(
+                        f"- {component} *(added to meet minimum 3)*"
+                    )
 
 
         st.text_area(
@@ -1699,7 +2015,10 @@ if uploaded:
     ]
 
 
-    # Recalculate Section 4
+    # --------------------------------------------------------
+    # Recalculate Section 4 after manual editing.
+    # --------------------------------------------------------
+
     sdg_rows = map_sdg_components(
         components,
         cleaned
@@ -1744,8 +2063,6 @@ if uploaded:
 
     # ========================================================
     # SECTION 4 PREVIEW
-    #
-    # SAME STRICT RULE AS PDF
     # ========================================================
 
     st.subheader(
@@ -1774,16 +2091,16 @@ if uploaded:
 
                 row[
                     f"SDG {n}"
-                ] = vals[n]
+                ] = vals.get(
+                    n,
+                    "1"
+                )
 
 
             preview_rows.append(
                 row
             )
 
-
-        # Explicit column names prevent the old
-        # 0, 1, 2, 3, 4 problem.
 
         df_preview = pd.DataFrame(
             preview_rows,
@@ -1804,15 +2121,25 @@ if uploaded:
         )
 
 
-        st.caption(
-            "Only SDGs mapped by EVERY project component are displayed."
-        )
+        if len(detected_components) < 3:
+
+            st.caption(
+                "Fewer than 3 components were initially detected. "
+                "Relevant components from the predefined component list were added to reach the minimum of 3."
+            )
+
+        else:
+
+            st.caption(
+                "Three or more components were detected. "
+                "The detected component list is retained."
+            )
 
 
     else:
 
         st.warning(
-            "At least 3 common SDGs mapped by every project component are required."
+            "No relevant project components were detected."
         )
 
 
