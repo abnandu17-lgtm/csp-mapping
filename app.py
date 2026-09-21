@@ -1533,11 +1533,15 @@ def build_pdf(
 
                 for number in matched_sdgs:
 
+                    # ONLY CHANGE:
+                    # If no SDG mapping exists for this component,
+                    # use 1 instead of 3.
+
                     row.append(
                         P(
                             values.get(
                                 number,
-                                "3",
+                                "1",
                             ),
                             small_style,
                         )
@@ -2109,11 +2113,15 @@ if uploaded:
 
             for number in matched_sdgs:
 
+                # ONLY CHANGE:
+                # If no SDG mapping exists for this component,
+                # use 1 instead of 3.
+
                 row[
                     f"SDG {number}"
                 ] = values.get(
                     number,
-                    "3",
+                    "1",
                 )
 
             preview_rows.append(
