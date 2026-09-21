@@ -2,18 +2,17 @@ import io
 import json
 import os
 import re
+import time
+from pathlib import Path
 
 import pandas as pd
 import streamlit as st
-
 from pypdf import PdfReader
-
 from google import genai
-from google.genai import types
 
 from reportlab.lib import colors
 from reportlab.lib.enums import TA_CENTER
-from reportlab.lib.pagesizes import A4, landscape
+from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import mm
 from reportlab.platypus import (
@@ -26,9 +25,9 @@ from reportlab.platypus import (
 )
 
 
-# =========================================================
+# ============================================================
 # PAGE CONFIG
-# =========================================================
+# ============================================================
 
 st.set_page_config(
     page_title="CSP Outcome Mapping Generator",
@@ -36,877 +35,1051 @@ st.set_page_config(
     layout="wide",
 )
 
-st.title("📘 CSP Outcome Mapping Generator")
 
-st.caption(
-    "Upload the Community Service Project book to generate "
-    "Learning Outcome, PO/PSO and SDG mapping."
-)
-
-
-# =========================================================
-# LEARNING OBJECTIVES
-# =========================================================
+# ============================================================
+# FIXED LEARNING OBJECTIVES
+# ============================================================
 
 LEARNING_OBJECTIVES = [
-    "To sensitize the students to the living conditions of the people who are around them",
-
-    "To help students to realize the stark realities of the society",
-
-    "To bring about an attitudinal change in the students and help them to develop societal consciousness, sensitivity, responsibility and accountability",
-
-    "To make students aware of their inner strength and help them to find new/out of box solutions to the social problems",
-
-    "To make students socially responsible citizens who are sensitive to the needs of the disadvantaged sections",
-
-    "To help students to initiate developmental activities in the community in coordination with public and government authorities",
-
-    "To develop a holistic life perspective among the students by making them study culture, traditions, habits, lifestyles, resource utilization, wastages and its management, social problems, public administration system and the roles and responsibilities of different persons across different social systems",
+    "To sensitize the students to the living conditions of the people who are around them.",
+    "To help students to realize the stark realities of the society.",
+    "To bring about an attitudinal change in the students and help them to develop societal consciousness, sensitivity, responsibility and accountability.",
+    "To make students aware of their inner strength and help them to find new/out of box solutions to the social problems.",
+    "To make students socially responsible citizens who are sensitive to the needs of the disadvantaged sections.",
+    "To help students to initiate developmental activities in the community in coordination with public and government authorities.",
+    "To develop a holistic life perspective among the students by making them study culture, traditions, habits, lifestyles, resource utilization, wastages and its management, social problems, public administration system and the roles and responsibilities of different persons across different social systems.",
 ]
 
 
-# =========================================================
-# LEARNING OUTCOMES
-# =========================================================
+# ============================================================
+# FIXED EXPECTED LEARNING OUTCOMES
+# ============================================================
 
 LEARNING_OUTCOMES = [
-    "Positive impact on students’ academic learning",
-
-    "Improves students’ ability to apply what they have learned in “the real world”",
-
-    "Positive impact on academic outcomes such as demonstrated complexity of understanding, problem analysis, problem-solving, critical thinking, and cognitive development",
-
-    "Improved ability to understand complexity and ambiguity",
-
-    "Greater sense of personal efficacy, personal identity, spiritual growth, and moral development",
-
-    "Greater interpersonal development, particularly the ability to work well with others, and build leadership and communication skills",
-
-    "Reduced stereotypes and greater inter-cultural understanding",
-
-    "Improved social responsibility and citizenship skills",
-
-    "Greater involvement in community service",
-
-    "Connections with professionals and community members for learning and career opportunities",
-
-    "Greater academic learning, leadership skills, and personal efficacy can lead to greater opportunity",
+    (
+        "LO1",
+        "Positive impact on students’ academic learning",
+    ),
+    (
+        "LO2",
+        "Improves students’ ability to apply what they have learned in “the real world”",
+    ),
+    (
+        "LO3",
+        "Positive impact on academic outcomes such as demonstrated complexity of understanding, problem analysis, problem-solving, critical thinking, and cognitive development",
+    ),
+    (
+        "LO4",
+        "Improved ability to understand complexity and ambiguity",
+    ),
+    (
+        "LO5",
+        "Greater sense of personal efficacy, personal identity, spiritual growth, and moral development",
+    ),
+    (
+        "LO6",
+        "Greater interpersonal development, particularly the ability to work well with others, and build leadership and communication skills",
+    ),
+    (
+        "LO7",
+        "Reduced stereotypes and greater inter-cultural understanding",
+    ),
+    (
+        "LO8",
+        "Improved social responsibility and citizenship skills",
+    ),
+    (
+        "LO9",
+        "Greater involvement in community service",
+    ),
+    (
+        "LO10",
+        "Connections with professionals and community members for learning and career opportunities",
+    ),
+    (
+        "LO11",
+        "Greater academic learning, leadership skills, and personal efficacy can lead to greater opportunity",
+    ),
 ]
 
 
-# =========================================================
-# PROGRAM OUTCOMES
-# =========================================================
+# ============================================================
+# FIXED PROGRAM OUTCOMES
+# ============================================================
 
-POS = {
-    "PO1": (
-        "Engineering Knowledge",
-        "Apply knowledge of mathematics, natural science, computing, "
-        "engineering fundamentals and an engineering specialization "
-        "to develop solutions to complex engineering problems.",
+POS = [
+    (
+        "PO1",
+        "Engineering Knowledge: Apply knowledge of mathematics, natural science, computing, engineering fundamentals and an engineering specialization to develop solutions to complex engineering problems.",
     ),
-
-    "PO2": (
-        "Problem Analysis",
-        "Identify, formulate, review research literature and analyze "
-        "complex engineering problems, reaching substantiated conclusions "
-        "with consideration for sustainable development.",
+    (
+        "PO2",
+        "Problem Analysis: Identify, formulate, review research literature and analyze complex engineering problems, reaching substantiated conclusions with consideration for sustainable development.",
     ),
-
-    "PO3": (
-        "Design/Development of Solutions",
-        "Design creative solutions for complex engineering problems and "
-        "design system components/processes to meet identified needs "
-        "with consideration for public health and safety, whole-life cost, "
-        "net zero carbon, culture, society and environment.",
+    (
+        "PO3",
+        "Design/Development of Solutions: Design creative solutions for complex engineering problems and design system components/processes to meet identified needs with consideration for public health and safety, whole-life cost, net zero carbon, culture, society and environment.",
     ),
-
-    "PO4": (
-        "Conduct Investigations of Complex Problems",
-        "Conduct investigations of complex engineering problems using "
-        "research-based knowledge including design of experiments, "
-        "modelling, analysis and interpretation of data to provide valid conclusions.",
+    (
+        "PO4",
+        "Conduct Investigations of Complex Problems: Conduct investigations of complex engineering problems using research-based knowledge including design of experiments, modelling, analysis & interpretation of data to provide valid conclusions.",
     ),
-
-    "PO5": (
-        "Engineering Tool Usage",
-        "Create, select and apply appropriate techniques, resources and "
-        "modern engineering and IT tools, including prediction and modelling "
-        "recognizing their limitations to solve complex engineering problems.",
+    (
+        "PO5",
+        "Engineering Tool Usage: Create, select and apply appropriate techniques, resources and modern engineering & IT tools, including prediction and modelling recognizing their limitations to solve complex engineering problems.",
     ),
-
-    "PO6": (
-        "The Engineer and The World",
-        "Analyze and evaluate societal and environmental aspects while solving "
-        "complex engineering problems for its impact on sustainability with "
-        "reference to economy, health, safety, societal, legal framework, "
-        "culture and environment.",
+    (
+        "PO6",
+        "The Engineer and The World: Analyze and evaluate societal and environmental aspects while solving complex engineering problems for its impact on sustainability with reference to economy, health, safety, societal, legal framework, culture and environment.",
     ),
-
-    "PO7": (
-        "Ethics",
-        "Apply ethical principles and commit to professional ethics, "
-        "human values, diversity and inclusion; adhere to national and international laws.",
+    (
+        "PO7",
+        "Ethics: Apply ethical principles and commit to professional ethics, human values, diversity and inclusion; adhere to national & international laws.",
     ),
-
-    "PO8": (
-        "Individual and Collaborative Teamwork",
-        "Function effectively as an individual, and as a member or leader "
-        "in diverse/multi-disciplinary teams.",
+    (
+        "PO8",
+        "Individual and Collaborative Team work: Function effectively as an individual, and as a member or leader in diverse/multi-disciplinary teams.",
     ),
-
-    "PO9": (
-        "Communication",
-        "Communicate effectively and inclusively within the engineering community "
-        "and society at large, such as being able to comprehend and write effective "
-        "reports and design documentation, make effective presentations considering "
-        "cultural, language, and learning differences.",
+    (
+        "PO9",
+        "Communication: Communicate effectively and inclusively within the engineering community and society at large, such as being able to comprehend and write effective reports and design documentation, make effective presentations considering cultural, language, and learning differences.",
     ),
-
-    "PO10": (
-        "Project Management and Finance",
-        "Apply knowledge and understanding of engineering management principles "
-        "and economic decision-making and apply these to one's own work, as a "
-        "member and leader in a team, and to manage projects and in multidisciplinary environments.",
+    (
+        "PO10",
+        "Project Management and Finance: Apply knowledge and understanding of engineering management principles and economic decision-making and apply these to one's own work, as a member and leader in a team, and to manage projects and in multidisciplinary environments.",
     ),
-
-    "PO11": (
-        "Life-Long Learning",
-        "Recognize the need for, and have the preparation and ability for independent "
-        "and life-long learning, adaptability to new and emerging technologies "
-        "and critical thinking in the broader context of technological change.",
+    (
+        "PO11",
+        "Life-Long Learning: Recognize the need for, and have the preparation and ability for independent and life-long learning, adaptability to new and emerging technologies and critical thinking in the broader context of technological change.",
     ),
-}
-
-
-# =========================================================
-# PROGRAM SPECIFIC OUTCOMES
-# =========================================================
-
-PSOS = {
-    "PSO1": (
-        "Apply fundamental knowledge to analyze and solve complex problems of "
-        "Electrical Machines, Control Systems, Instrumentation Systems, Power Systems "
-        "and Power Electronic Systems."
-    ),
-
-    "PSO2": (
-        "Design electrical, electronics and interdisciplinary projects to meet "
-        "industrial demands and solve real-time problems."
-    ),
-
-    "PSO3": (
-        "Utilize recent techniques and sustainable technologies in areas such as "
-        "Control Engineering, Smart Grid, Power Quality and Advanced Power System "
-        "Protection for lifelong learning."
-    ),
-}
-
-
-# =========================================================
-# HEADERS
-# =========================================================
-
-MAPPING_HEADERS = [
-    "PO1",
-    "PO2",
-    "PO3",
-    "PO4",
-    "PO5",
-    "PO6",
-    "PO7",
-    "PO8",
-    "PO9",
-    "PO10",
-    "PO11",
-    "PSO1",
-    "PSO2",
-    "PSO3",
 ]
 
 
-# =========================================================
-# FINAL FIXED LO → PO / PSO MATRIX
-# =========================================================
+# ============================================================
+# FIXED PROGRAM SPECIFIC OUTCOMES
+# ============================================================
 
-def map_lo_matrix():
-
-    return [
-
-        # PO1 PO2 PO3 PO4 PO5 PO6 PO7 PO8 PO9 PO10 PO11 PSO1 PSO2 PSO3
-
-        ["2", "1", "1", "-", "1", "2", "-", "1", "1", "-", "3", "1", "1", "2"],  # LO1
-
-        ["2", "3", "2", "1", "1", "3", "1", "2", "2", "1", "2", "1", "2", "1"],  # LO2
-
-        ["2", "3", "3", "2", "2", "2", "-", "1", "1", "-", "3", "1", "2", "2"],  # LO3
-
-        ["1", "3", "2", "2", "1", "2", "-", "1", "1", "-", "3", "1", "1", "2"],  # LO4
-
-        ["-", "-", "-", "-", "-", "2", "3", "2", "1", "1", "2", "-", "1", "1"],  # LO5
-
-        ["-", "1", "1", "-", "-", "2", "2", "3", "3", "2", "2", "-", "1", "1"],  # LO6
-
-        ["-", "1", "1", "1", "-", "3", "3", "3", "3", "1", "2", "-", "1", "1"],  # LO7
-
-        ["1", "2", "1", "1", "1", "3", "3", "3", "3", "2", "3", "1", "1", "2"],  # LO8
-
-        ["1", "2", "2", "1", "1", "3", "2", "3", "3", "2", "3", "1", "2", "2"],  # LO9
-
-        ["1", "2", "1", "1", "1", "2", "2", "3", "3", "3", "3", "1", "2", "2"],  # LO10
-
-        ["2", "2", "2", "1", "2", "3", "2", "3", "3", "2", "3", "2", "2", "3"],  # LO11
-    ]
+PSOS = [
+    (
+        "PSO1",
+        "Apply fundamental knowledge to analyze and solve complex problems of Electrical Machines, Control Systems, Instrumentation Systems, Power Systems and Power Electronic Systems.",
+    ),
+    (
+        "PSO2",
+        "Design electrical, electronics and interdisciplinary projects to meet industrial demands and solve real-time problems.",
+    ),
+    (
+        "PSO3",
+        "Utilize recent techniques and sustainable technologies in areas such as Control Engineering, Smart Grid, Power Quality and Advanced Power System Protection for lifelong learning.",
+    ),
+]
 
 
-# =========================================================
-# SDG MASTER LIST
-# =========================================================
+# ============================================================
+# FIXED SDG 1-17 LIST
+# ============================================================
 
 SDGS = {
-    1: "No Poverty",
-    2: "Zero Hunger",
-    3: "Good Health and Well-being",
-    4: "Quality Education",
-    5: "Gender Equality",
-    6: "Clean Water and Sanitation",
-    7: "Affordable and Clean Energy",
-    8: "Decent Work and Economic Growth",
-    9: "Industry, Innovation and Infrastructure",
-    10: "Reduced Inequalities",
-    11: "Sustainable Cities and Communities",
-    12: "Responsible Consumption and Production",
-    13: "Climate Action",
-    14: "Life Below Water",
-    15: "Life on Land",
-    16: "Peace, Justice and Strong Institutions",
-    17: "Partnerships for the Goals",
+    1: "End poverty in all its forms everywhere",
+    2: "End hunger, achieve food security and improved nutrition and promote sustainable agriculture",
+    3: "Ensure healthy lives and promote well-being for all at all ages",
+    4: "Ensure inclusive and equitable quality education and promote lifelong learning opportunities for all",
+    5: "Achieve gender equality and empower all women and girls",
+    6: "Ensure availability and sustainable management of water and sanitation for all",
+    7: "Ensure access to affordable, reliable, sustainable and modern energy for all",
+    8: "Promote sustained, inclusive, and sustainable economic growth, full and productive employment and decent work for all",
+    9: "Build resilient infrastructure, promote inclusive and sustainable industrialization and foster innovation",
+    10: "Reduce inequality within and among countries",
+    11: "Make cities and human settlements inclusive, safe, resilient and sustainable",
+    12: "Ensure sustainable consumption and production patterns",
+    13: "Take urgent action to combat climate change and its impacts",
+    14: "Conserve and sustainably use the oceans, seas and marine resources for sustainable development",
+    15: "Protect, restore and promote sustainable use of terrestrial ecosystems, sustainably manage forests, combat desertification, and halt and reverse land degradation and halt biodiversity loss",
+    16: "Promote peaceful and inclusive societies for sustainable development, provide access to justice for all and build effective, accountable and inclusive institutions at all levels",
+    17: "Strengthen the means of implementation and revitalize the global partnership for sustainable development",
 }
 
 
-# =========================================================
-# GEMINI CONFIG
-# =========================================================
+# ============================================================
+# PDF EXTRACTION
+# ============================================================
 
-def get_gemini_api_key():
-
-    try:
-        if "GEMINI_API_KEY" in st.secrets:
-            return st.secrets["GEMINI_API_KEY"]
-    except Exception:
-        pass
-
-    return os.getenv("GEMINI_API_KEY")
-
-
-def get_gemini_model():
-
-    try:
-        if "GEMINI_MODEL" in st.secrets:
-            return st.secrets["GEMINI_MODEL"]
-    except Exception:
-        pass
-
-    return os.getenv(
-        "GEMINI_MODEL",
-        "gemini-2.0-flash"
-    )
-
-
-@st.cache_resource
-def get_gemini_client():
-
-    api_key = get_gemini_api_key()
-
-    if not api_key:
-        return None
-
-    return genai.Client(
-        api_key=api_key
-    )
-
-
-# =========================================================
-# TEXT EXTRACTION
-# =========================================================
-
-def extract_text(pdf_bytes):
-
-    reader = PdfReader(
-        io.BytesIO(pdf_bytes)
-    )
+def extract_text(uploaded_file):
+    reader = PdfReader(uploaded_file)
 
     pages = []
 
     for page_number, page in enumerate(reader.pages, start=1):
-
         try:
-            text = page.extract_text() or ""
+            page_text = page.extract_text() or ""
         except Exception:
-            text = ""
+            page_text = ""
 
         pages.append(
-            f"\n--- PAGE {page_number} ---\n{text}"
+            f"\n[PAGE {page_number}]\n{page_text}"
         )
 
     return "\n".join(pages)
 
 
-# =========================================================
-# CLEAN TEXT
-# =========================================================
-
 def clean_text(text):
-
-    text = re.sub(
-        r"[ \t]+",
-        " ",
-        text
-    )
-
-    text = re.sub(
-        r"\n{3,}",
-        "\n\n",
-        text
-    )
-
+    text = text or ""
+    text = text.replace("\xa0", " ")
+    text = text.replace("&nbsp;", " ")
+    text = text.replace("&amp;", "&")
+    text = re.sub(r"\s+", " ", text)
     return text.strip()
 
 
-# =========================================================
-# PROJECT TITLE
-# =========================================================
-
 def extract_title(text):
-
-    lines = [
-        line.strip()
-        for line in text.splitlines()
-        if line.strip()
+    patterns = [
+        r"(?:project title|title of the project)\s*[:\-]\s*(.{5,180})",
+        r"(?:project)\s*[:\-]\s*(.{5,180})",
     ]
 
-    for line in lines[:40]:
+    for pattern in patterns:
+        match = re.search(
+            pattern,
+            text,
+            re.IGNORECASE,
+        )
 
-        lower = line.lower()
-
-        if (
-            "community service project" in lower
-            or "project title" in lower
-        ):
-            continue
-
-        if len(line) > 10 and len(line) < 180:
-            return line
+        if match:
+            return clean_text(match.group(1))[:180]
 
     return "Community Service Project"
 
 
-# =========================================================
-# GEMINI JSON CALL
-# =========================================================
+# ============================================================
+# GEMINI
+# ============================================================
+
+def get_gemini_api_key():
+    key_file = (
+        Path(".streamlit")
+        / "gemini_api_key.txt"
+    )
+
+    if key_file.exists():
+        key = key_file.read_text(
+            encoding="utf-8"
+        ).strip()
+
+        if key:
+            return key
+
+    try:
+        key = str(
+            st.secrets.get(
+                "GEMINI_API_KEY",
+                "",
+            )
+        ).strip()
+
+        if key:
+            return key
+
+    except Exception:
+        pass
+
+    key = os.getenv(
+        "GEMINI_API_KEY",
+        "",
+    ).strip()
+
+    if key:
+        return key
+
+    raise RuntimeError(
+        "Gemini API key not found. "
+        "Put your API key in "
+        ".streamlit\\gemini_api_key.txt"
+    )
+
+
+def get_gemini_client():
+    return genai.Client(
+        api_key=get_gemini_api_key()
+    )
+
+
+def get_available_models(client):
+
+    models = []
+
+    try:
+        for model in client.models.list():
+
+            name = getattr(
+                model,
+                "name",
+                "",
+            )
+
+            if not name:
+                continue
+
+            name = str(name)
+
+            clean_name = name.replace(
+                "models/",
+                "",
+            )
+
+            supported = getattr(
+                model,
+                "supported_actions",
+                None,
+            )
+
+            if supported:
+
+                supported_text = str(
+                    supported
+                ).lower()
+
+                if (
+                    "generatecontent"
+                    not in supported_text
+                    and "generate_content"
+                    not in supported_text
+                ):
+                    continue
+
+            models.append(clean_name)
+
+    except Exception:
+        models = []
+
+    if not models:
+
+        return [
+            "gemini-3.1-flash-lite",
+            "gemini-3.5-flash-lite",
+            "gemini-2.5-flash-lite",
+            "gemini-3.6-flash",
+        ]
+
+    def score(name):
+
+        lowered = name.lower()
+
+        score_value = 0
+
+        if "flash-lite" in lowered:
+            score_value += 100
+
+        if "flash" in lowered:
+            score_value += 50
+
+        if "pro" in lowered:
+            score_value -= 20
+
+        if "embedding" in lowered:
+            score_value -= 1000
+
+        if "image" in lowered:
+            score_value -= 1000
+
+        if "tts" in lowered:
+            score_value -= 1000
+
+        if "audio" in lowered:
+            score_value -= 1000
+
+        return score_value
+
+    models.sort(
+        key=score,
+        reverse=True,
+    )
+
+    return models
+
 
 def call_gemini_json(
-    prompt,
-    temperature=0.2
+    system_prompt,
+    user_prompt,
 ):
 
     client = get_gemini_client()
 
-    if client is None:
-        raise RuntimeError(
-            "Gemini API key not found. "
-            "Add GEMINI_API_KEY to Streamlit secrets."
-        )
-
-    model = get_gemini_model()
-
-    response = client.models.generate_content(
-        model=model,
-        contents=prompt,
-        config=types.GenerateContentConfig(
-            temperature=temperature,
-            response_mime_type="application/json",
-        ),
+    models = get_available_models(
+        client
     )
 
-    raw = response.text.strip()
+    last_error = None
 
-    return json.loads(raw)
+    models = models[:8]
+
+    for model_name in models:
+
+        for attempt in range(3):
+
+            try:
+
+                response = (
+                    client.models.generate_content(
+                        model=model_name,
+                        contents=(
+                            system_prompt
+                            + "\n\n"
+                            + user_prompt
+                        ),
+                        config={
+                            "temperature": 0,
+                            "response_mime_type": (
+                                "application/json"
+                            ),
+                        },
+                    )
+                )
+
+                result_text = getattr(
+                    response,
+                    "text",
+                    None,
+                )
+
+                if not result_text:
+                    raise RuntimeError(
+                        f"{model_name} returned "
+                        "an empty response."
+                    )
+
+                return json.loads(
+                    result_text
+                )
+
+            except Exception as exc:
+
+                last_error = exc
+
+                error_text = str(
+                    exc
+                ).lower()
+
+                temporary_error = any(
+                    phrase in error_text
+                    for phrase in [
+                        "503",
+                        "unavailable",
+                        "high demand",
+                        "429",
+                        "rate limit",
+                        "resource exhausted",
+                        "overloaded",
+                        "timeout",
+                        "deadline",
+                        "temporarily",
+                    ]
+                )
+
+                model_error = any(
+                    phrase in error_text
+                    for phrase in [
+                        "404",
+                        "not found",
+                        "no longer available",
+                        "unsupported",
+                        "shut down",
+                    ]
+                )
+
+                if temporary_error:
+
+                    time.sleep(
+                        2 ** attempt
+                    )
+
+                    continue
+
+                if model_error:
+                    break
+
+                break
+
+    raise RuntimeError(
+        "All available Gemini models failed. "
+        f"Last error: {last_error}"
+    )
 
 
-# =========================================================
-# ANALYZE CSP PROJECT BOOK
-# =========================================================
+# ============================================================
+# DYNAMIC PROJECT COMPONENT DETECTION
+# ============================================================
 
 def analyze_project_book(text):
 
-    prompt = f"""
-You are analyzing a Community Service Project (CSP) project book.
+    system_prompt = """
+You are analyzing a Community Service Project book.
 
-IMPORTANT:
-This is a Community Service Project.
-Do NOT treat it as an industry internship.
-Do NOT invent project components.
-Use only evidence actually present in the uploaded project book.
+Your task is to identify the ACTUAL project components
+from the supplied document.
 
-Identify the actual major CSP components/activities carried out by the students.
+STRICT RULES:
 
-For every component provide:
+1. Use ONLY the supplied CSP project-book content.
+2. Do not assume the project domain.
+3. Do not use a predefined component list.
+4. Do not reuse components from another project.
+5. Generate component names yourself from the actual book.
+6. Components must represent substantive project activities,
+   interventions, technical tasks, community activities,
+   implementation activities, training/awareness activities,
+   maintenance activities, or clearly addressed problem/solution
+   areas.
+7. Ignore acknowledgements, certificates and references unless
+   they contain actual project activities.
+8. Do not create a component merely because a word appears once.
+9. Do not fabricate information.
+10. Aim for 3 to 5 distinct components ONLY when the book
+    genuinely supports them.
+11. If the book supports fewer than 3, return fewer.
+12. Every component MUST contain evidence from the book.
+13. Page numbers must come from [PAGE N] markers.
+14. Generate concise, project-specific component names.
+15. The component name does NOT need to be an exact sentence
+    from the book, but its meaning must be directly supported
+    by the book.
 
-1. component
-2. description
-3. evidence
-4. page
+Return JSON only:
 
-Return ONLY valid JSON in this format:
-
-{{
-    "components": [
-        {{
-            "component": "Component name",
-            "description": "Short description",
-            "evidence": "Exact or closely summarized evidence from the project book",
-            "page": "Page number"
-        }}
-    ]
-}}
-
-PROJECT BOOK:
-
-{text}
+{
+  "project_title": "string",
+  "components": [
+    {
+      "name": "string",
+      "evidence": [
+        {
+          "page": 1,
+          "quote": "short supporting quote"
+        }
+      ]
+    }
+  ]
+}
 """
 
-    return call_gemini_json(
-        prompt,
-        temperature=0.1
-    )
+    max_chars = 80000
 
+    if len(text) <= max_chars:
 
-# =========================================================
-# SDG MAPPING
-# =========================================================
-
-def map_sdg_components(
-    components,
-    project_text
-):
-
-    sdg_text = "\n".join(
-        [
-            f"SDG {number}: {name}"
-            for number, name in SDGS.items()
-        ]
-    )
-
-    components_json = json.dumps(
-        components,
-        indent=2,
-        ensure_ascii=False
-    )
-
-    prompt = f"""
-You are mapping a Community Service Project to the UN Sustainable Development Goals.
-
-Use ONLY the actual project components/evidence supplied below.
-
-Do not invent activities.
-
-The mapping must be evidence-based.
-
-SDG scale:
-
-3 = Strong contribution
-2 = Moderate contribution
-1 = Indirect contribution
-0 = No contribution
-
-For each project component identify ONLY SDGs that have a reasonable connection.
-
-For every mapped SDG provide:
-
-- sdg_number
-- level
-- evidence
-
-The evidence must explain why that specific CSP component contributes to that SDG.
-
-Return ONLY valid JSON in exactly this format:
-
-{{
-    "rows": [
-        {{
-            "component": "Component name",
-            "mappings": {{
-                "1": {{
-                    "level": "3",
-                    "evidence": "Reason based on project evidence"
-                }},
-                "4": {{
-                    "level": "2",
-                    "evidence": "Reason based on project evidence"
-                }}
-            }}
-        }}
-    ]
-}}
-
-SDG MASTER LIST:
-
-{sdg_text}
-
-PROJECT COMPONENTS:
-
-{components_json}
-
-PROJECT BOOK TEXT:
-
-{project_text}
-"""
-
-    return call_gemini_json(
-        prompt,
-        temperature=0.1
-    )
-
-
-# =========================================================
-# NORMALIZE SDG ROWS
-# =========================================================
-
-def normalize_sdg_rows(
-    result,
-    components
-):
-
-    rows = result.get(
-        "rows",
-        []
-    )
-
-    component_names = [
-        c.get("component", "")
-        for c in components
-    ]
-
-    normalized = []
-
-    for row in rows:
-
-        component = str(
-            row.get(
-                "component",
-                ""
-            )
-        ).strip()
-
-        mappings = row.get(
-            "mappings",
-            {}
+        result = call_gemini_json(
+            system_prompt,
+            (
+                "Analyze this complete uploaded CSP "
+                "project book:\n\n"
+                + text
+            ),
         )
 
-        clean_mappings = {}
+    else:
 
-        if isinstance(
-            mappings,
-            dict
+        chunk_size = 30000
+
+        chunks = [
+            text[i:i + chunk_size]
+            for i in range(
+                0,
+                len(text),
+                chunk_size,
+            )
+        ]
+
+        candidates = []
+
+        for index, chunk in enumerate(
+            chunks,
+            start=1,
         ):
 
-            for number, value in mappings.items():
+            prompt = f"""
+Analyze this part of the uploaded CSP project book.
 
-                number = str(number)
+Find candidate project components supported by this
+document section.
 
-                if not number.isdigit():
-                    continue
+Do not invent components.
 
-                number_int = int(number)
+Return JSON only:
 
-                if number_int not in SDGS:
-                    continue
+{{
+  "candidates": [
+    {{
+      "name": "string",
+      "evidence": [
+        {{
+          "page": 1,
+          "quote": "short supporting quote"
+        }}
+      ]
+    }}
+  ]
+}}
 
-                if isinstance(
-                    value,
-                    dict
-                ):
+This is chunk {index} of {len(chunks)}.
 
-                    level = str(
-                        value.get(
-                            "level",
-                            "0"
-                        )
+DOCUMENT:
+{chunk}
+"""
+
+            candidates.append(
+                call_gemini_json(
+                    system_prompt,
+                    prompt,
+                )
+            )
+
+        synthesis_prompt = """
+Combine the candidate components from the uploaded
+CSP project book.
+
+STRICT RULES:
+
+- Use only the evidence supplied below.
+- Do not use a predefined component list.
+- Merge duplicate/overlapping candidates.
+- Generate concise project-specific names.
+- Aim for 3 to 5 only if supported.
+- Do not fabricate components.
+- Preserve supporting page numbers and quotes.
+
+Return JSON only:
+
+{
+  "project_title": "string",
+  "components": [
+    {
+      "name": "string",
+      "evidence": [
+        {
+          "page": 1,
+          "quote": "short supporting quote"
+        }
+      ]
+    }
+  ]
+}
+
+CANDIDATES:
+""" + json.dumps(
+            candidates,
+            ensure_ascii=False,
+        )
+
+        result = call_gemini_json(
+            system_prompt,
+            synthesis_prompt,
+        )
+
+    components = []
+    seen = set()
+
+    for item in result.get(
+        "components",
+        [],
+    ):
+
+        if not isinstance(
+            item,
+            dict,
+        ):
+            continue
+
+        name = clean_text(
+            str(
+                item.get(
+                    "name",
+                    "",
+                )
+            )
+        )
+
+        if not name:
+            continue
+
+        evidence = []
+
+        for evidence_item in item.get(
+            "evidence",
+            [],
+        ):
+
+            if not isinstance(
+                evidence_item,
+                dict,
+            ):
+                continue
+
+            quote = clean_text(
+                str(
+                    evidence_item.get(
+                        "quote",
+                        "",
                     )
+                )
+            )
 
-                    evidence = str(
-                        value.get(
-                            "evidence",
-                            ""
-                        )
-                    )
+            if not quote:
+                continue
 
-                else:
+            page = evidence_item.get(
+                "page"
+            )
 
-                    level = str(value)
-                    evidence = ""
+            try:
+                page = int(page)
+            except (
+                TypeError,
+                ValueError,
+            ):
+                page = None
 
-                if level not in [
-                    "0",
-                    "1",
-                    "2",
-                    "3"
-                ]:
-                    continue
-
-                if level == "0":
-                    continue
-
-                clean_mappings[number] = {
-                    "level": level,
-                    "evidence": evidence,
+            evidence.append(
+                {
+                    "page": page,
+                    "quote": quote[:500],
                 }
+            )
 
-        normalized.append(
+        if not evidence:
+            continue
+
+        key = name.casefold()
+
+        if key in seen:
+            continue
+
+        seen.add(key)
+
+        components.append(
             {
-                "component": component,
-                "mappings": clean_mappings,
+                "name": name[:160],
+                "evidence": evidence[:5],
             }
         )
 
-    # Add components that Gemini may have missed
-    existing = {
-        row["component"].strip().lower()
-        for row in normalized
+    return {
+        "project_title": (
+            clean_text(
+                str(
+                    result.get(
+                        "project_title",
+                        "",
+                    )
+                )
+            )[:180]
+            or extract_title(text)
+        ),
+        "components": components[:5],
     }
 
-    for component in component_names:
 
-        if component.strip().lower() not in existing:
+# ============================================================
+# FIXED LO -> PO/PSO MATRIX
+# ============================================================
 
-            normalized.append(
-                {
-                    "component": component,
-                    "mappings": {},
-                }
-            )
+def map_lo_matrix():
 
-    return normalized
-
-
-# =========================================================
-# SDG MATRIX DATAFRAME
-# =========================================================
-
-def sdg_dataframe(
-    sdg_rows
-):
-
-    data = []
-
-    for row in sdg_rows:
-
-        values = row.get(
-            "mappings",
-            {}
-        )
-
-        record = {
-            "CSP Component": row.get(
-                "component",
-                ""
-            )
-        }
-
-        for number in SDGS:
-
-            mapping = values.get(
-                str(number)
-            )
-
-            if isinstance(
-                mapping,
-                dict
-            ):
-                record[
-                    f"SDG {number}"
-                ] = mapping.get(
-                    "level",
-                    "3"
-                )
-            else:
-                # Preserve previous application behaviour:
-                # missing Section 4 values display as 3
-                record[
-                    f"SDG {number}"
-                ] = "3"
-
-        data.append(
-            record
-        )
-
-    return pd.DataFrame(
-        data
-    )
-
-
-# =========================================================
-# REPORTLAB HELPERS
-# =========================================================
-
-styles = getSampleStyleSheet()
-
-NORMAL = ParagraphStyle(
-    "NormalCustom",
-    parent=styles["Normal"],
-    fontSize=8,
-    leading=10,
-)
-
-SMALL = ParagraphStyle(
-    "Small",
-    parent=styles["Normal"],
-    fontSize=7,
-    leading=9,
-)
-
-TABLE_HEADER = ParagraphStyle(
-    "TableHeader",
-    parent=styles["Normal"],
-    fontSize=6.5,
-    leading=7.5,
-    alignment=TA_CENTER,
-)
-
-TABLE_CELL = ParagraphStyle(
-    "TableCell",
-    parent=styles["Normal"],
-    fontSize=6.5,
-    leading=7.5,
-)
-
-TITLE_STYLE = ParagraphStyle(
-    "TitleCustom",
-    parent=styles["Title"],
-    fontSize=18,
-    leading=22,
-    alignment=TA_CENTER,
-)
-
-SECTION_STYLE = ParagraphStyle(
-    "SectionCustom",
-    parent=styles["Heading2"],
-    fontSize=12,
-    leading=15,
-)
-
-
-def P(text):
-
-    return Paragraph(
-        str(text).replace(
-            "\n",
-            "<br/>"
-        ),
-        NORMAL
-    )
-
-
-# =========================================================
-# PDF TABLE STYLE
-# =========================================================
-
-def apply_table_style(
-    table,
-    header_rows=1
-):
-
-    commands = [
-        (
-            "GRID",
-            (0, 0),
-            (-1, -1),
-            0.4,
-            colors.black,
-        ),
-
-        (
-            "VALIGN",
-            (0, 0),
-            (-1, -1),
-            "MIDDLE",
-        ),
-
-        (
-            "ALIGN",
-            (0, 0),
-            (-1, -1),
-            "CENTER",
-        ),
-
-        (
-            "LEFTPADDING",
-            (0, 0),
-            (-1, -1),
-            3,
-        ),
-
-        (
-            "RIGHTPADDING",
-            (0, 0),
-            (-1, -1),
-            3,
-        ),
-
-        (
-            "TOPPADDING",
-            (0, 0),
-            (-1, -1),
-            3,
-        ),
-
-        (
-            "BOTTOMPADDING",
-            (0, 0),
-            (-1, -1),
-            3,
-        ),
+    return [
+        [
+            "2", "1", "1", "-", "1",
+            "2", "-", "1", "1", "-",
+            "3", "1", "1", "2",
+        ],
+        [
+            "2", "3", "2", "1", "1",
+            "3", "1", "2", "2", "1",
+            "2", "1", "2", "1",
+        ],
+        [
+            "2", "3", "3", "2", "2",
+            "2", "-", "1", "1", "-",
+            "3", "1", "2", "2",
+        ],
+        [
+            "1", "3", "2", "2", "1",
+            "2", "-", "1", "1", "-",
+            "3", "1", "1", "2",
+        ],
+        [
+            "-", "-", "-", "-", "-",
+            "2", "3", "2", "1", "1",
+            "2", "-", "1", "1",
+        ],
+        [
+            "-", "1", "1", "-", "-",
+            "2", "2", "3", "3", "2",
+            "2", "-", "1", "1",
+        ],
+        [
+            "-", "1", "1", "1", "-",
+            "3", "3", "3", "3", "1",
+            "2", "-", "1", "1",
+        ],
+        [
+            "1", "2", "1", "1", "1",
+            "3", "3", "3", "3", "2",
+            "3", "1", "1", "2",
+        ],
+        [
+            "1", "2", "2", "1", "1",
+            "3", "2", "3", "3", "2",
+            "3", "1", "2", "2",
+        ],
+        [
+            "1", "2", "1", "1", "1",
+            "2", "2", "3", "3", "3",
+            "3", "1", "2", "2",
+        ],
+        [
+            "2", "2", "2", "1", "2",
+            "3", "2", "3", "3", "2",
+            "3", "2", "2", "3",
+        ],
     ]
 
-    if header_rows:
 
-        commands.extend(
-            [
-                (
-                    "BACKGROUND",
-                    (0, 0),
-                    (-1, header_rows - 1),
-                    colors.lightgrey,
-                ),
+# ============================================================
+# DYNAMIC COMPONENT -> SDG MAPPING
+# ============================================================
 
-                (
-                    "FONTNAME",
-                    (0, 0),
-                    (-1, header_rows - 1),
-                    "Helvetica-Bold",
-                ),
-            ]
-        )
+def map_sdg_components(
+    component_objects,
+    project_text,
+):
 
-    table.setStyle(
-        TableStyle(commands)
+    component_names = [
+        item["name"]
+        for item in component_objects
+        if isinstance(item, dict)
+        and item.get("name")
+    ]
+
+    if not component_names:
+        return []
+
+    sdg_catalogue = "\n".join(
+        [
+            f"SDG {number}: {description}"
+            for number, description
+            in SDGS.items()
+        ]
     )
 
+    evidence_text = []
 
-# =========================================================
-# BUILD PDF
-# =========================================================
+    for item in component_objects:
+
+        evidence_text.append(
+            f"COMPONENT: {item['name']}"
+        )
+
+        for evidence in item.get(
+            "evidence",
+            [],
+        ):
+
+            page = evidence.get(
+                "page"
+            )
+
+            quote = evidence.get(
+                "quote",
+                "",
+            )
+
+            evidence_text.append(
+                f"Page {page}: {quote}"
+            )
+
+    system_prompt = """
+You are an evidence-grounded SDG mapping analyst.
+
+Map the supplied project components to the fixed SDG 1-17
+catalogue.
+
+STRICT RULES:
+
+1. Use only the supplied CSP project-book evidence.
+2. Do not invent project activities.
+3. Do not invent SDGs.
+4. Use only SDGs 1 through 17 from the supplied catalogue.
+5. Assign an SDG only when there is a meaningful relationship.
+6. Strength:
+   3 = direct/high contribution
+   2 = moderate contribution
+   1 = limited but defensible contribution
+7. Do not assign an SDG merely to fill a minimum number.
+8. Aim for at least 3 SDGs only if the document genuinely
+   supports at least 3.
+9. If fewer are supported, return fewer.
+10. Every mapping reason must be evidence-based.
+
+Return JSON only:
+
+{
+  "mappings": [
+    {
+      "component": "exact component name",
+      "sdgs": [
+        {
+          "number": 1,
+          "strength": 1,
+          "reason": "brief evidence-based reason"
+        }
+      ]
+    }
+  ]
+}
+"""
+
+    book_text = project_text
+
+    if len(book_text) > 60000:
+        book_text = book_text[:60000]
+
+    user_prompt = f"""
+FIXED SDG CATALOGUE:
+
+{sdg_catalogue}
+
+PROJECT COMPONENTS:
+
+{json.dumps(
+    component_names,
+    ensure_ascii=False,
+    indent=2,
+)}
+
+COMPONENT EVIDENCE:
+
+{chr(10).join(evidence_text)}
+
+UPLOADED CSP PROJECT BOOK:
+
+{book_text}
+"""
+
+    result = call_gemini_json(
+        system_prompt,
+        user_prompt,
+    )
+
+    valid_names = set(
+        component_names
+    )
+
+    rows = []
+
+    for mapping in result.get(
+        "mappings",
+        [],
+    ):
+
+        if not isinstance(
+            mapping,
+            dict,
+        ):
+            continue
+
+        component = clean_text(
+            str(
+                mapping.get(
+                    "component",
+                    "",
+                )
+            )
+        )
+
+        if component not in valid_names:
+            continue
+
+        values = {}
+
+        for sdg in mapping.get(
+            "sdgs",
+            [],
+        ):
+
+            if not isinstance(
+                sdg,
+                dict,
+            ):
+                continue
+
+            try:
+
+                number = int(
+                    sdg.get(
+                        "number"
+                    )
+                )
+
+                strength = int(
+                    sdg.get(
+                        "strength"
+                    )
+                )
+
+            except (
+                TypeError,
+                ValueError,
+            ):
+                continue
+
+            if (
+                number in SDGS
+                and strength in {1, 2, 3}
+            ):
+
+                values[number] = str(
+                    strength
+                )
+
+        if values:
+
+            rows.append(
+                (
+                    component,
+                    values,
+                )
+            )
+
+    row_map = dict(rows)
+
+    return [
+        (
+            component,
+            row_map[component],
+        )
+        for component in component_names
+        if component in row_map
+    ]
+
+
+# ============================================================
+# REPORTLAB
+# ============================================================
+
+def P(text, style):
+
+    return Paragraph(
+        str(text),
+        style,
+    )
+
 
 def build_pdf(
     project_title,
     lo_matrix,
-    sdg_rows
+    sdg_rows,
 ):
 
     buffer = io.BytesIO()
 
-    doc = SimpleDocTemplate(
+    document = SimpleDocTemplate(
         buffer,
         pagesize=A4,
         rightMargin=12 * mm,
@@ -915,910 +1088,1097 @@ def build_pdf(
         bottomMargin=12 * mm,
     )
 
+    styles = getSampleStyleSheet()
+
+    title_style = ParagraphStyle(
+        "CSPTitle",
+        parent=styles["Title"],
+        alignment=TA_CENTER,
+        fontSize=15,
+        leading=18,
+        spaceAfter=8,
+    )
+
+    heading_style = ParagraphStyle(
+        "CSPHeading",
+        parent=styles["Heading2"],
+        fontSize=12,
+        leading=15,
+        spaceBefore=6,
+        spaceAfter=6,
+    )
+
+    body_style = ParagraphStyle(
+        "CSPBody",
+        parent=styles["BodyText"],
+        fontSize=8.5,
+        leading=11,
+    )
+
+    small_style = ParagraphStyle(
+        "CSPSmall",
+        parent=body_style,
+        fontSize=7,
+        leading=9,
+    )
+
     story = []
 
-    # -----------------------------------------------------
-    # TITLE
-    # -----------------------------------------------------
-
     story.append(
-        Paragraph(
-            "COMMUNITY SERVICE PROJECT",
-            TITLE_STYLE,
+        P(
+            "CO-PO-PSO & WK-PO-PSO Mapping",
+            title_style,
         )
     )
 
     story.append(
-        Spacer(
-            1,
-            5 * mm
+        P(
+            project_title,
+            body_style,
         )
     )
 
     story.append(
-        Paragraph(
-            f"<b>Project Title:</b> {project_title}",
-            NORMAL,
-        )
+        Spacer(1, 6)
     )
+
+    # ========================================================
+    # SECTION 1 — LEARNING OBJECTIVES
+    # ========================================================
 
     story.append(
-        Spacer(
-            1,
-            5 * mm
+        P(
+            "1) Learning Objectives:",
+            heading_style,
         )
     )
 
-    # -----------------------------------------------------
-    # LEARNING OBJECTIVES
-    # -----------------------------------------------------
-
-    story.append(
-        Paragraph(
-            "Learning Objectives",
-            SECTION_STYLE,
-        )
-    )
-
-    story.append(
-        Spacer(
-            1,
-            2 * mm
-        )
-    )
-
-    for index, objective in enumerate(
-        LEARNING_OBJECTIVES,
-        start=1
-    ):
-
-        story.append(
-            Paragraph(
-                f"<b>{index}.</b> {objective}",
-                NORMAL,
-            )
-        )
-
-        story.append(
-            Spacer(
-                1,
-                1.5 * mm
-            )
-        )
-
-    story.append(
-        Spacer(
-            1,
-            4 * mm
-        )
-    )
-
-    # -----------------------------------------------------
-    # LEARNING OUTCOMES
-    # -----------------------------------------------------
-
-    story.append(
-        Paragraph(
-            "Expected Learning Outcomes (LOs)",
-            SECTION_STYLE,
-        )
-    )
-
-    story.append(
-        Spacer(
-            1,
-            2 * mm
-        )
-    )
-
-    for index, outcome in enumerate(
-        LEARNING_OUTCOMES,
-        start=1
-    ):
-
-        story.append(
-            Paragraph(
-                f"<b>LO{index}:</b> {outcome}",
-                NORMAL,
-            )
-        )
-
-        story.append(
-            Spacer(
-                1,
-                1.5 * mm
-            )
-        )
-
-    # -----------------------------------------------------
-    # PAGE BREAK
-    # -----------------------------------------------------
-
-    story.append(
-        PageBreak()
-    )
-
-    # -----------------------------------------------------
-    # LO VS PO / PSO
-    # -----------------------------------------------------
-
-    story.append(
-        Paragraph(
-            "1) LOs Vs POs and PSOs",
-            SECTION_STYLE,
-        )
-    )
-
-    story.append(
-        Spacer(
-            1,
-            3 * mm
-        )
-    )
-
-    matrix_data = [
+    objective_data = [
         [
-            Paragraph(
-                "<b>LO</b>",
-                TABLE_HEADER
-            )
-        ]
-        + [
-            Paragraph(
-                f"<b>{header}</b>",
-                TABLE_HEADER
-            )
-            for header in MAPPING_HEADERS
+            P("No.", small_style),
+            P("Learning Objective", small_style),
         ]
     ]
 
-    for index, row in enumerate(
-        lo_matrix,
-        start=1
+    for index, objective in enumerate(
+        LEARNING_OBJECTIVES,
+        start=1,
     ):
 
-        matrix_data.append(
+        objective_data.append(
             [
-                Paragraph(
-                    f"<b>LO{index}</b>",
-                    TABLE_CELL
-                )
+                P(str(index), small_style),
+                P(objective, small_style),
             ]
-            +
+        )
+
+    table = Table(
+        objective_data,
+        colWidths=[
+            15 * mm,
+            164 * mm,
+        ],
+        repeatRows=1,
+    )
+
+    table.setStyle(
+        TableStyle(
             [
-                Paragraph(
-                    str(value),
-                    TABLE_CELL
-                )
+                (
+                    "GRID",
+                    (0, 0),
+                    (-1, -1),
+                    0.6,
+                    colors.black,
+                ),
+                (
+                    "BACKGROUND",
+                    (0, 0),
+                    (-1, 0),
+                    colors.whitesmoke,
+                ),
+                (
+                    "VALIGN",
+                    (0, 0),
+                    (-1, -1),
+                    "MIDDLE",
+                ),
+                (
+                    "ALIGN",
+                    (0, 0),
+                    (0, -1),
+                    "CENTER",
+                ),
+                (
+                    "FONTNAME",
+                    (0, 0),
+                    (-1, 0),
+                    "Helvetica-Bold",
+                ),
+                (
+                    "LEFTPADDING",
+                    (0, 0),
+                    (-1, -1),
+                    4,
+                ),
+                (
+                    "RIGHTPADDING",
+                    (0, 0),
+                    (-1, -1),
+                    4,
+                ),
+                (
+                    "TOPPADDING",
+                    (0, 0),
+                    (-1, -1),
+                    4,
+                ),
+                (
+                    "BOTTOMPADDING",
+                    (0, 0),
+                    (-1, -1),
+                    4,
+                ),
+            ]
+        )
+    )
+
+    story.append(table)
+
+    story.append(
+        Spacer(1, 8)
+    )
+
+
+    # ========================================================
+    # SECTION 2 — EXPECTED LEARNING OUTCOMES
+    # ========================================================
+
+    story.append(
+        P(
+            "2) Expected Learning Outcomes (LOs):",
+            heading_style,
+        )
+    )
+
+    outcome_data = [
+        [
+            P("LO", small_style),
+            P("Expected Learning Outcome", small_style),
+        ]
+    ]
+
+    for code, description in LEARNING_OUTCOMES:
+
+        outcome_data.append(
+            [
+                P(code, small_style),
+                P(description, small_style),
+            ]
+        )
+
+    table = Table(
+        outcome_data,
+        colWidths=[
+            18 * mm,
+            161 * mm,
+        ],
+        repeatRows=1,
+    )
+
+    table.setStyle(
+        TableStyle(
+            [
+                (
+                    "GRID",
+                    (0, 0),
+                    (-1, -1),
+                    0.6,
+                    colors.black,
+                ),
+                (
+                    "BACKGROUND",
+                    (0, 0),
+                    (-1, 0),
+                    colors.whitesmoke,
+                ),
+                (
+                    "VALIGN",
+                    (0, 0),
+                    (-1, -1),
+                    "MIDDLE",
+                ),
+                (
+                    "ALIGN",
+                    (0, 0),
+                    (0, -1),
+                    "CENTER",
+                ),
+                (
+                    "FONTNAME",
+                    (0, 0),
+                    (-1, 0),
+                    "Helvetica-Bold",
+                ),
+                (
+                    "LEFTPADDING",
+                    (0, 0),
+                    (-1, -1),
+                    4,
+                ),
+                (
+                    "RIGHTPADDING",
+                    (0, 0),
+                    (-1, -1),
+                    4,
+                ),
+                (
+                    "TOPPADDING",
+                    (0, 0),
+                    (-1, -1),
+                    4,
+                ),
+                (
+                    "BOTTOMPADDING",
+                    (0, 0),
+                    (-1, -1),
+                    4,
+                ),
+            ]
+        )
+    )
+
+    story.append(table)
+
+    story.append(
+        Spacer(1, 8)
+    )
+
+
+    # ========================================================
+    # SECTION 3 — LO Vs POs AND PSOs
+    # ========================================================
+
+    story.append(
+        P(
+            "3) LOs Vs POs and PSOs:",
+            heading_style,
+        )
+    )
+
+    section3_data = [
+        [P("LO", small_style)]
+        + [
+            P(header, small_style)
+            for header in HEADERS
+        ]
+    ]
+
+    for index, (lo, _) in enumerate(
+        LEARNING_OUTCOMES
+    ):
+
+        row = lo_matrix[index]
+
+        if len(row) != len(HEADERS):
+
+            raise ValueError(
+                f"LO matrix row {index + 1} "
+                f"has {len(row)} values; "
+                f"{len(HEADERS)} required."
+            )
+
+        section3_data.append(
+            [P(lo, small_style)]
+            + [
+                P(value, small_style)
                 for value in row
             ]
         )
 
-    col_widths = [
-        11 * mm
-    ] + [
-        12 * mm
-        for _ in MAPPING_HEADERS
-    ]
-
-    matrix_table = Table(
-        matrix_data,
-        colWidths=col_widths,
+    table = Table(
+        section3_data,
+        colWidths=[
+            15 * mm
+        ] + [
+            12.1 * mm
+        ] * 14,
         repeatRows=1,
     )
 
-    apply_table_style(
-        matrix_table
-    )
-
-    story.append(
-        matrix_table
-    )
-
-    story.append(
-        Spacer(
-            1,
-            3 * mm
+    table.setStyle(
+        TableStyle(
+            [
+                (
+                    "GRID",
+                    (0, 0),
+                    (-1, -1),
+                    0.5,
+                    colors.black,
+                ),
+                (
+                    "BACKGROUND",
+                    (0, 0),
+                    (-1, 0),
+                    colors.whitesmoke,
+                ),
+                (
+                    "ALIGN",
+                    (0, 0),
+                    (-1, -1),
+                    "CENTER",
+                ),
+                (
+                    "VALIGN",
+                    (0, 0),
+                    (-1, -1),
+                    "MIDDLE",
+                ),
+                (
+                    "FONTNAME",
+                    (0, 0),
+                    (-1, 0),
+                    "Helvetica-Bold",
+                ),
+                (
+                    "FONTSIZE",
+                    (0, 0),
+                    (-1, -1),
+                    6,
+                ),
+            ]
         )
     )
 
+    story.append(table)
+
     story.append(
-        Paragraph(
-            "<b>Mapping Scale:</b> 3 – High &nbsp;&nbsp; "
-            "2 – Medium &nbsp;&nbsp; "
-            "1 – Low &nbsp;&nbsp; "
-            "- – No direct relationship",
-            SMALL,
-        )
+        Spacer(1, 5)
     )
 
-    # -----------------------------------------------------
-    # PAGE BREAK
-    # -----------------------------------------------------
+    story.append(
+        P(
+            "Scale: 3 = High    2 = Medium    "
+            "1 = Low    - = No mapping",
+            small_style,
+        )
+    )
 
     story.append(
         PageBreak()
     )
 
-    # -----------------------------------------------------
-    # SDG SECTION
-    # -----------------------------------------------------
+
+    # ========================================================
+    # SECTION 4 — SDGs Vs COMMUNITY SERVICE PROJECT COMPONENTS
+    # ========================================================
 
     story.append(
-        Paragraph(
-            "2) SDGs Vs CSP Component",
-            SECTION_STYLE,
+        P(
+            "4) SDGs Vs Community Service "
+            "Project Components:",
+            heading_style,
         )
     )
 
-    story.append(
-        Spacer(
-            1,
-            3 * mm
+    if sdg_rows:
+
+        matched_sdgs = sorted(
+            {
+                number
+                for _, values in sdg_rows
+                for number in values
+                if number in SDGS
+            }
         )
-    )
 
-    story.append(
-        Paragraph(
-            f"<b>CSP Theme / Project:</b> {project_title}",
-            NORMAL,
-        )
-    )
+        if matched_sdgs:
 
-    story.append(
-        Spacer(
-            1,
-            3 * mm
-        )
-    )
+            section4_data = [
+                [
+                    P(
+                        "Project Component",
+                        small_style,
+                    )
+                ]
+                + [
+                    P(
+                        f"SDG {number}",
+                        small_style,
+                    )
+                    for number in matched_sdgs
+                ]
+            ]
 
-    story.append(
-        Paragraph(
-            "<b>SDG Mapping Level:</b> "
-            "3 – Strong &nbsp;&nbsp; "
-            "2 – Moderate &nbsp;&nbsp; "
-            "1 – Indirect &nbsp;&nbsp; "
-            "0 – No contribution",
-            SMALL,
-        )
-    )
+            for component, values in sdg_rows:
 
-    story.append(
-        Spacer(
-            1,
-            5 * mm
-        )
-    )
+                row = [
+                    P(
+                        component,
+                        small_style,
+                    )
+                ]
 
-    # -----------------------------------------------------
-    # SDG MASTER LIST
-    # -----------------------------------------------------
+                for number in matched_sdgs:
 
-    story.append(
-        Paragraph(
-            "<b>Relevant Sustainable Development Goals</b>",
-            NORMAL,
-        )
-    )
+                    # ====================================================
+                    # ONLY CHANGE:
+                    # Missing Section 4 values are now "3" instead of "-"
+                    # ====================================================
 
-    for number, name in SDGS.items():
+                    row.append(
+                        P(
+                            values.get(
+                                number,
+                                "3",
+                            ),
+                            small_style,
+                        )
+                    )
+
+                section4_data.append(row)
+
+            component_width = 68 * mm
+
+            available_width = (
+                A4[0] - 24 * mm
+            )
+
+            remaining_width = (
+                available_width
+                - component_width
+            )
+
+            sdg_width = (
+                remaining_width
+                / len(matched_sdgs)
+            )
+
+            table = Table(
+                section4_data,
+                colWidths=[
+                    component_width
+                ] + [
+                    sdg_width
+                ] * len(matched_sdgs),
+                repeatRows=1,
+            )
+
+            table.setStyle(
+                TableStyle(
+                    [
+                        (
+                            "GRID",
+                            (0, 0),
+                            (-1, -1),
+                            0.5,
+                            colors.black,
+                        ),
+                        (
+                            "BACKGROUND",
+                            (0, 0),
+                            (-1, 0),
+                            colors.whitesmoke,
+                        ),
+                        (
+                            "FONTNAME",
+                            (0, 0),
+                            (-1, 0),
+                            "Helvetica-Bold",
+                        ),
+                        (
+                            "ALIGN",
+                            (0, 0),
+                            (-1, -1),
+                            "CENTER",
+                        ),
+                        (
+                            "ALIGN",
+                            (0, 1),
+                            (0, -1),
+                            "LEFT",
+                        ),
+                        (
+                            "VALIGN",
+                            (0, 0),
+                            (-1, -1),
+                            "MIDDLE",
+                        ),
+                        (
+                            "FONTSIZE",
+                            (0, 0),
+                            (-1, -1),
+                            7,
+                        ),
+                        (
+                            "LEFTPADDING",
+                            (0, 0),
+                            (-1, -1),
+                            4,
+                        ),
+                        (
+                            "RIGHTPADDING",
+                            (0, 0),
+                            (-1, -1),
+                            4,
+                        ),
+                        (
+                            "TOPPADDING",
+                            (0, 0),
+                            (-1, -1),
+                            4,
+                        ),
+                        (
+                            "BOTTOMPADDING",
+                            (0, 0),
+                            (-1, -1),
+                            4,
+                        ),
+                    ]
+                )
+            )
+
+            story.append(table)
+
+            story.append(
+                Spacer(1, 6)
+            )
+
+            story.append(
+                P(
+                    "Mapping scale: 3 = High    "
+                    "2 = Medium    1 = Low",
+                    small_style,
+                )
+            )
+
+        else:
+
+            story.append(
+                P(
+                    "No defensible SDG relationship "
+                    "was found from the uploaded project book.",
+                    body_style,
+                )
+            )
+
+    else:
 
         story.append(
-            Paragraph(
-                f"SDG {number}: {name}",
-                SMALL,
+            P(
+                "No defensible SDG relationship "
+                "was found from the uploaded project book.",
+                body_style,
             )
         )
 
-    story.append(
-        Spacer(
-            1,
-            5 * mm
-        )
-    )
-
-    # -----------------------------------------------------
-    # SDG MATRIX
-    # -----------------------------------------------------
-
-    sdg_data = [
-        [
-            Paragraph(
-                "<b>CSP Component</b>",
-                TABLE_HEADER
-            )
-        ]
-        +
-        [
-            Paragraph(
-                f"<b>SDG {number}</b>",
-                TABLE_HEADER
-            )
-            for number in SDGS
-        ]
-    ]
-
-    for row in sdg_rows:
-
-        values = row.get(
-            "mappings",
-            {}
-        )
-
-        component = row.get(
-            "component",
-            ""
-        )
-
-        cells = [
-            Paragraph(
-                component,
-                TABLE_CELL
-            )
-        ]
-
-        for number in SDGS:
-
-            mapping = values.get(
-                str(number)
-            )
-
-            if isinstance(
-                mapping,
-                dict
-            ):
-
-                level = mapping.get(
-                    "level",
-                    "3"
-                )
-
-            else:
-
-                # Keep existing app behaviour
-                level = "3"
-
-            cells.append(
-                Paragraph(
-                    str(level),
-                    TABLE_CELL
-                )
-            )
-
-        sdg_data.append(
-            cells
-        )
-
-    landscape_doc = SimpleDocTemplate(
-        buffer,
-        pagesize=landscape(A4),
-        rightMargin=8 * mm,
-        leftMargin=8 * mm,
-        topMargin=8 * mm,
-        bottomMargin=8 * mm,
-    )
-
-    # Rebuild entire story for landscape SDG section
-    final_story = []
-
-    final_story.extend(
-        story[:-1]
-    )
-
-    final_story.append(
-        PageBreak()
-    )
-
-    # -----------------------------------------------------
-    # FINAL SDG TABLE
-    # -----------------------------------------------------
-
-    sdg_table = Table(
-        sdg_data,
-        repeatRows=1,
-    )
-
-    apply_table_style(
-        sdg_table
-    )
-
-    final_story.append(
-        sdg_table
-    )
-
-    final_story.append(
-        Spacer(
-            1,
-            5 * mm
-        )
-    )
-
-    # -----------------------------------------------------
-    # SDG EVIDENCE
-    # -----------------------------------------------------
-
-    final_story.append(
-        Paragraph(
-            "<b>Evidence for SDG Mapping</b>",
-            SECTION_STYLE,
-        )
-    )
-
-    for row in sdg_rows:
-
-        component = row.get(
-            "component",
-            ""
-        )
-
-        mappings = row.get(
-            "mappings",
-            {}
-        )
-
-        final_story.append(
-            Paragraph(
-                f"<b>{component}</b>",
-                NORMAL,
-            )
-        )
-
-        for number, mapping in mappings.items():
-
-            if not isinstance(
-                mapping,
-                dict
-            ):
-                continue
-
-            level = mapping.get(
-                "level",
-                ""
-            )
-
-            evidence = mapping.get(
-                "evidence",
-                ""
-            )
-
-            final_story.append(
-                Paragraph(
-                    f"SDG {number} "
-                    f"({SDGS.get(int(number), '')}) "
-                    f"– Level {level}: {evidence}",
-                    SMALL,
-                )
-            )
-
-        final_story.append(
-            Spacer(
-                1,
-                2 * mm
-            )
-        )
-
-    landscape_doc.build(
-        final_story
-    )
+    document.build(story)
 
     buffer.seek(0)
 
     return buffer.getvalue()
 
 
-# =========================================================
-# APP UI
-# =========================================================
+# ============================================================
+# STREAMLIT APPLICATION
+# ============================================================
 
-uploaded_file = st.file_uploader(
-    "Upload CSP Project Book PDF",
+st.title(
+    "📘 CSP Outcome Mapping Generator"
+)
+
+st.caption(
+    "Upload one Community Service Project book "
+    "→ AI reads the actual book "
+    "→ detects project components from the book "
+    "→ maps them to SDGs "
+    "→ generates Sections 1–4 as a PDF."
+)
+
+uploaded = st.file_uploader(
+    "Upload your CSP Project Book (PDF)",
     type=["pdf"],
 )
 
 
-if uploaded_file is not None:
+if uploaded:
 
-    pdf_bytes = uploaded_file.getvalue()
-
-    # -----------------------------------------------------
-    # EXTRACT TEXT
-    # -----------------------------------------------------
+    # --------------------------------------------------------
+    # EXTRACT PDF
+    # --------------------------------------------------------
 
     with st.spinner(
-        "Reading project book..."
+        "Extracting the CSP project book..."
     ):
 
-        raw_text = extract_text(
-            pdf_bytes
+        text = extract_text(
+            uploaded
         )
 
-        project_text = clean_text(
-            raw_text
-        )
-
-    if not project_text:
+    if not text.strip():
 
         st.error(
-            "No readable text was extracted from the PDF."
+            "No selectable text was found in this PDF."
+        )
+
+        st.info(
+            "This application requires a text-readable PDF."
         )
 
         st.stop()
 
-    project_title = extract_title(
-        project_text
+    cleaned_text = clean_text(
+        text
     )
 
-    st.success(
-        "Project book loaded successfully."
-    )
+    # --------------------------------------------------------
+    # AI COMPONENT DETECTION
+    # --------------------------------------------------------
 
-    st.subheader(
-        "Project Title"
-    )
+    try:
 
-    project_title = st.text_input(
-        "Project Title",
-        value=project_title,
-    )
-
-    # -----------------------------------------------------
-    # ANALYZE BUTTON
-    # -----------------------------------------------------
-
-    if st.button(
-        "🔍 Analyze CSP Project",
-        type="primary",
-    ):
-
-        try:
-
-            with st.spinner(
-                "Analyzing project components..."
-            ):
-
-                analysis = analyze_project_book(
-                    project_text
-                )
-
-                components = analysis.get(
-                    "components",
-                    []
-                )
-
-            if not components:
-
-                st.warning(
-                    "No project components were detected."
-                )
-
-            else:
-
-                st.session_state[
-                    "components"
-                ] = components
-
-                with st.spinner(
-                    "Mapping project components to SDGs..."
-                ):
-
-                    sdg_result = map_sdg_components(
-                        components,
-                        project_text
-                    )
-
-                    sdg_rows = normalize_sdg_rows(
-                        sdg_result,
-                        components
-                    )
-
-                st.session_state[
-                    "sdg_rows"
-                ] = sdg_rows
-
-                st.session_state[
-                    "project_title"
-                ] = project_title
-
-                st.success(
-                    "Analysis and SDG mapping completed."
-                )
-
-        except Exception as e:
-
-            st.error(
-                f"Error: {e}"
-            )
-
-
-# =========================================================
-# DISPLAY RESULTS
-# =========================================================
-
-if "components" in st.session_state:
-
-    components = st.session_state[
-        "components"
-    ]
-
-    st.subheader(
-        "Detected CSP Components"
-    )
-
-    for index, component in enumerate(
-        components,
-        start=1
-    ):
-
-        with st.expander(
-            f"{index}. {component.get('component', '')}",
-            expanded=False,
+        with st.spinner(
+            "AI is reading the complete CSP book "
+            "and identifying actual project components..."
         ):
 
-            st.write(
-                component.get(
-                    "description",
-                    ""
-                )
+            analysis = analyze_project_book(
+                text
             )
 
-            st.caption(
-                f"Evidence: "
-                f"{component.get('evidence', '')}"
-            )
+    except Exception as exc:
 
-            st.caption(
-                f"Page: "
-                f"{component.get('page', '')}"
-            )
-
-    # -----------------------------------------------------
-    # LO PREVIEW
-    # -----------------------------------------------------
-
-    st.subheader(
-        "Learning Outcomes"
-    )
-
-    for index, outcome in enumerate(
-        LEARNING_OUTCOMES,
-        start=1
-    ):
-
-        st.write(
-            f"**LO{index}:** {outcome}"
+        st.error(
+            "Project-book AI analysis failed."
         )
 
-    # -----------------------------------------------------
-    # LO MAPPING
-    # -----------------------------------------------------
+        st.code(
+            str(exc)
+        )
 
-    st.subheader(
-        "LOs vs POs and PSOs"
+        st.info(
+            "Check your Gemini API key and Gemini API access."
+        )
+
+        st.stop()
+
+    project_title = (
+        analysis.get(
+            "project_title"
+        )
+        or extract_title(text)
     )
+
+    component_objects = (
+        analysis.get(
+            "components",
+            [],
+        )
+    )
+
+    components = [
+        item["name"]
+        for item in component_objects
+        if isinstance(item, dict)
+        and item.get("name")
+    ]
+
+    if not components:
+
+        st.error(
+            "The AI could not find a substantive "
+            "project component supported by the uploaded book."
+        )
+
+        st.stop()
+
+    # --------------------------------------------------------
+    # FIXED SECTION 3
+    # --------------------------------------------------------
 
     lo_matrix = map_lo_matrix()
 
-    lo_df = pd.DataFrame(
-        lo_matrix,
-        columns=MAPPING_HEADERS,
-        index=[
-            f"LO{i}"
-            for i in range(
-                1,
-                len(LEARNING_OUTCOMES) + 1
+    # --------------------------------------------------------
+    # DYNAMIC SDG MAPPING
+    # --------------------------------------------------------
+
+    try:
+
+        with st.spinner(
+            "Mapping the actual project components "
+            "to relevant SDGs..."
+        ):
+
+            sdg_rows = map_sdg_components(
+                component_objects,
+                cleaned_text,
             )
-        ],
+
+    except Exception as exc:
+
+        st.error(
+            "SDG mapping failed."
+        )
+
+        st.code(
+            str(exc)
+        )
+
+        st.stop()
+
+    # --------------------------------------------------------
+    # SUCCESS
+    # --------------------------------------------------------
+
+    st.success(
+        f"PDF extracted successfully. "
+        f"{len(text):,} characters analyzed. "
+        f"{len(components)} project components detected."
     )
 
-    st.dataframe(
-        lo_df,
-        use_container_width=True,
-    )
-
-    st.caption(
-        "3 = High | 2 = Medium | 1 = Low | - = No direct relationship"
-    )
-
-    # -----------------------------------------------------
-    # EDIT COMPONENTS
-    # -----------------------------------------------------
+    # --------------------------------------------------------
+    # PROJECT COMPONENT EVIDENCE
+    # --------------------------------------------------------
 
     st.subheader(
-        "Customize CSP Components"
+        "Project Components Detected From CSP Book"
     )
 
-    edited_components = []
+    st.write(
+        "These components were generated from the uploaded "
+        "CSP project book. No predefined project-component "
+        "list is used."
+    )
 
-    for index, component in enumerate(
-        components
+    for number, component in enumerate(
+        components,
+        start=1,
     ):
 
-        default_name = component.get(
-            "component",
-            ""
+        st.write(
+            f"**{number}. {component}**"
         )
 
-        new_name = st.text_input(
-            f"Component {index + 1}",
-            value=default_name,
-            key=f"component_name_{index}",
-        )
-
-        edited_components.append(
-            {
-                **component,
-                "component": new_name,
-            }
-        )
-
-    if st.button(
-        "🔄 Remap SDGs",
+    with st.expander(
+        "🔎 Show evidence used for component detection"
     ):
 
-        try:
+        for item in component_objects:
 
-            with st.spinner(
-                "Remapping SDGs..."
+            st.markdown(
+                f"### {item['name']}"
+            )
+
+            for evidence in item.get(
+                "evidence",
+                [],
             ):
 
-                remap_result = map_sdg_components(
-                    edited_components,
-                    project_text
+                page = evidence.get(
+                    "page"
                 )
 
-                remapped_rows = normalize_sdg_rows(
-                    remap_result,
-                    edited_components
+                quote = evidence.get(
+                    "quote",
+                    "",
                 )
 
-                st.session_state[
-                    "components"
-                ] = edited_components
-
-                st.session_state[
-                    "sdg_rows"
-                ] = remapped_rows
-
-            st.success(
-                "SDG mapping updated."
-            )
-
-        except Exception as e:
-
-            st.error(
-                f"Remapping error: {e}"
-            )
-
-    # -----------------------------------------------------
-    # SDG RESULT
-    # -----------------------------------------------------
-
-    if "sdg_rows" in st.session_state:
-
-        sdg_rows = st.session_state[
-            "sdg_rows"
-        ]
-
-        st.subheader(
-            "SDG Mapping"
-        )
-
-        sdg_df = sdg_dataframe(
-            sdg_rows
-        )
-
-        st.dataframe(
-            sdg_df,
-            use_container_width=True,
-        )
-
-        # -------------------------------------------------
-        # SDG EVIDENCE
-        # -------------------------------------------------
-
-        st.subheader(
-            "SDG Mapping Evidence"
-        )
-
-        for row in sdg_rows:
-
-            component = row.get(
-                "component",
-                ""
-            )
-
-            mappings = row.get(
-                "mappings",
-                {}
-            )
-
-            with st.expander(
-                component
-            ):
-
-                if not mappings:
+                if page:
 
                     st.write(
-                        "No explicit SDG mapping evidence."
+                        f'Page {page}: "{quote}"'
                     )
 
                 else:
 
-                    for number, mapping in mappings.items():
+                    st.write(
+                        f'"{quote}"'
+                    )
 
-                        if not isinstance(
-                            mapping,
-                            dict
-                        ):
-                            continue
+    # --------------------------------------------------------
+    # OPTIONAL COMPONENT EDITING
+    # --------------------------------------------------------
 
-                        level = mapping.get(
-                            "level",
-                            ""
-                        )
+    st.subheader(
+        "Section 4 Components"
+    )
 
-                        evidence = mapping.get(
-                            "evidence",
-                            ""
-                        )
+    edited_components_text = st.text_area(
+        "One component per line. "
+        "Only edit if you need to correct the AI-generated labels.",
+        value="\n".join(
+            components
+        ),
+        height=160,
+    )
 
-                        st.write(
-                            f"**SDG {number} – "
-                            f"{SDGS.get(int(number), '')}**"
-                        )
+    edited_components = [
+        value.strip()
+        for value in edited_components_text.splitlines()
+        if value.strip()
+    ]
 
-                        st.write(
-                            f"Level: **{level}**"
-                        )
+    if st.button(
+        "🔄 Re-map SDGs for edited components"
+    ):
 
-                        st.caption(
-                            evidence
-                        )
+        if not edited_components:
 
-    # -----------------------------------------------------
-    # GENERATE PDF
-    # -----------------------------------------------------
+            st.warning(
+                "Enter at least one component."
+            )
+
+        else:
+
+            edited_objects = [
+                {
+                    "name": name,
+                    "evidence": [],
+                }
+                for name in edited_components
+            ]
+
+            try:
+
+                with st.spinner(
+                    "Checking edited components "
+                    "against the uploaded CSP book..."
+                ):
+
+                    new_rows = map_sdg_components(
+                        edited_objects,
+                        cleaned_text,
+                    )
+
+                st.session_state[
+                    "active_components"
+                ] = edited_components
+
+                st.session_state[
+                    "active_sdg_rows"
+                ] = new_rows
+
+                st.success(
+                    "SDG mapping updated."
+                )
+
+            except Exception as exc:
+
+                st.error(
+                    f"SDG remapping failed: {exc}"
+                )
+
+    # --------------------------------------------------------
+    # ACTIVE DATA
+    # --------------------------------------------------------
+
+    active_components = st.session_state.get(
+        "active_components",
+        components,
+    )
+
+    active_sdg_rows = st.session_state.get(
+        "active_sdg_rows",
+        sdg_rows,
+    )
+
+    # --------------------------------------------------------
+    # LEARNING OBJECTIVES PREVIEW
+    # --------------------------------------------------------
+
+    st.subheader(
+        "Section 1 — Learning Objectives"
+    )
+
+    objectives_preview = {
+        "No.": list(
+            range(
+                1,
+                len(LEARNING_OBJECTIVES) + 1
+            )
+        ),
+        "Learning Objective": LEARNING_OBJECTIVES,
+    }
+
+    st.dataframe(
+        pd.DataFrame(
+            objectives_preview
+        ),
+        use_container_width=True,
+        hide_index=True,
+    )
+
+    # --------------------------------------------------------
+    # LEARNING OUTCOMES PREVIEW
+    # --------------------------------------------------------
+
+    st.subheader(
+        "Section 2 — Expected Learning Outcomes"
+    )
+
+    outcomes_preview = {
+        "LO": [
+            item[0]
+            for item in LEARNING_OUTCOMES
+        ],
+        "Expected Learning Outcome": [
+            item[1]
+            for item in LEARNING_OUTCOMES
+        ],
+    }
+
+    st.dataframe(
+        pd.DataFrame(
+            outcomes_preview
+        ),
+        use_container_width=True,
+        hide_index=True,
+    )
+
+    # --------------------------------------------------------
+    # LO → PO/PSO PREVIEW
+    # --------------------------------------------------------
+
+    st.subheader(
+        "Section 3 — LO → PO/PSO Mapping"
+    )
+
+    section3_preview = {
+        "LO": [
+            item[0]
+            for item in LEARNING_OUTCOMES
+        ]
+    }
+
+    for column_index, header in enumerate(
+        HEADERS
+    ):
+
+        section3_preview[
+            header
+        ] = [
+            lo_matrix[row_index][column_index]
+            for row_index in range(
+                len(LEARNING_OUTCOMES)
+            )
+        ]
+
+    st.dataframe(
+        pd.DataFrame(
+            section3_preview
+        ),
+        use_container_width=True,
+        hide_index=True,
+    )
+
+    # --------------------------------------------------------
+    # SECTION 4 PREVIEW
+    # --------------------------------------------------------
+
+    st.subheader(
+        "Section 4 — Project Components → SDGs"
+    )
+
+    matched_sdgs = sorted(
+        {
+            number
+            for _, values in active_sdg_rows
+            for number in values
+            if number in SDGS
+        }
+    )
+
+    if active_sdg_rows and matched_sdgs:
+
+        preview_rows = []
+
+        for component, values in (
+            active_sdg_rows
+        ):
+
+            row = {
+                "Project Component": component
+            }
+
+            for number in matched_sdgs:
+
+                # ====================================================
+                # ONLY CHANGE:
+                # Missing Section 4 values are now "3" instead of "-"
+                # ====================================================
+
+                row[
+                    f"SDG {number}"
+                ] = values.get(
+                    number,
+                    "3",
+                )
+
+            preview_rows.append(
+                row
+            )
+
+        st.dataframe(
+            pd.DataFrame(
+                preview_rows
+            ),
+            use_container_width=True,
+            hide_index=True,
+        )
+
+    else:
+
+        st.warning(
+            "No defensible SDG relationship "
+            "was found from the uploaded CSP book."
+        )
+
+    # --------------------------------------------------------
+    # FINAL PDF
+    # --------------------------------------------------------
 
     st.subheader(
         "Generate Final PDF"
     )
 
     if st.button(
-        "📄 Generate Final Mapping PDF",
+        "📄 Generate Final CSP PDF",
         type="primary",
     ):
 
         try:
 
-            with st.spinner(
-                "Generating PDF..."
-            ):
-
-                final_pdf = build_pdf(
-                    project_title=st.session_state.get(
-                        "project_title",
-                        project_title,
-                    ),
-                    lo_matrix=lo_matrix,
-                    sdg_rows=st.session_state.get(
-                        "sdg_rows",
-                        [],
-                    ),
-                )
+            pdf_bytes = build_pdf(
+                project_title,
+                lo_matrix,
+                active_sdg_rows,
+            )
 
             st.success(
-                "Final PDF generated successfully."
+                "Final CSP PDF generated successfully."
             )
 
             st.download_button(
-                label="⬇️ Download Final PDF",
-                data=final_pdf,
-                file_name="CSP_Outcome_Mapping.pdf",
+                label="⬇️ Download Final CSP PDF",
+                data=pdf_bytes,
+                file_name=(
+                    "CSP_LO_PO_PSO_SDG_Mapping.pdf"
+                ),
                 mime="application/pdf",
             )
 
-        except Exception as e:
+        except Exception as exc:
 
             st.error(
-                f"PDF generation error: {e}"
+                "PDF generation failed."
             )
+
+            st.code(
+                str(exc)
+            )
+
+else:
+
+    st.info(
+        "Upload your CSP project-book PDF to begin."
+    )
