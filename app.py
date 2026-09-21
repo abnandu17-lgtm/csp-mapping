@@ -176,6 +176,17 @@ PSOS = [
 
 
 # ============================================================
+# PO / PSO TABLE HEADERS
+# ============================================================
+
+HEADERS = [f"PO{i}" for i in range(1, 12)] + [
+    "PSO1",
+    "PSO2",
+    "PSO3",
+]
+
+
+# ============================================================
 # FIXED SDG 1-17 LIST
 # ============================================================
 
@@ -1142,6 +1153,7 @@ def build_pdf(
         Spacer(1, 6)
     )
 
+
     # ========================================================
     # SECTION 1 — LEARNING OBJECTIVES
     # ========================================================
@@ -1521,11 +1533,6 @@ def build_pdf(
 
                 for number in matched_sdgs:
 
-                    # ====================================================
-                    # ONLY CHANGE:
-                    # Missing Section 4 values are now "3" instead of "-"
-                    # ====================================================
-
                     row.append(
                         P(
                             values.get(
@@ -1793,7 +1800,7 @@ if uploaded:
         st.stop()
 
     # --------------------------------------------------------
-    # FIXED SECTION 3
+    # FIXED LO → PO/PSO
     # --------------------------------------------------------
 
     lo_matrix = map_lo_matrix()
@@ -1983,7 +1990,7 @@ if uploaded:
     )
 
     # --------------------------------------------------------
-    # LEARNING OBJECTIVES PREVIEW
+    # SECTION 1 PREVIEW
     # --------------------------------------------------------
 
     st.subheader(
@@ -1994,7 +2001,7 @@ if uploaded:
         "No.": list(
             range(
                 1,
-                len(LEARNING_OBJECTIVES) + 1
+                len(LEARNING_OBJECTIVES) + 1,
             )
         ),
         "Learning Objective": LEARNING_OBJECTIVES,
@@ -2009,7 +2016,7 @@ if uploaded:
     )
 
     # --------------------------------------------------------
-    # LEARNING OUTCOMES PREVIEW
+    # SECTION 2 PREVIEW
     # --------------------------------------------------------
 
     st.subheader(
@@ -2036,7 +2043,7 @@ if uploaded:
     )
 
     # --------------------------------------------------------
-    # LO → PO/PSO PREVIEW
+    # SECTION 3 PREVIEW
     # --------------------------------------------------------
 
     st.subheader(
@@ -2102,11 +2109,6 @@ if uploaded:
 
             for number in matched_sdgs:
 
-                # ====================================================
-                # ONLY CHANGE:
-                # Missing Section 4 values are now "3" instead of "-"
-                # ====================================================
-
                 row[
                     f"SDG {number}"
                 ] = values.get(
@@ -2162,7 +2164,7 @@ if uploaded:
                 label="⬇️ Download Final CSP PDF",
                 data=pdf_bytes,
                 file_name=(
-                    "CSP_LO_PO_PSO_SDG_Mapping.pdf"
+                    "CSP_CO_PO_PSO_WK_SDG_Mapping.pdf"
                 ),
                 mime="application/pdf",
             )
