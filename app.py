@@ -22,6 +22,7 @@ from reportlab.platypus import (
     Table,
     TableStyle,
     PageBreak,
+    KeepTogether,
 )
 
 
@@ -1095,14 +1096,14 @@ def build_pdf(
         pagesize=A4,
         rightMargin=12 * mm,
         leftMargin=12 * mm,
-        topMargin=12 * mm,
-        bottomMargin=12 * mm,
+        topMargin=10 * mm,
+        bottomMargin=10 * mm,
     )
 
     styles = getSampleStyleSheet()
 
     # ========================================================
-    # INCREASED PDF TEXT SIZE
+    # PDF TEXT STYLES
     # ========================================================
 
     title_style = ParagraphStyle(
@@ -1112,7 +1113,7 @@ def build_pdf(
         alignment=TA_CENTER,
         fontSize=15,
         leading=18,
-        spaceAfter=8,
+        spaceAfter=6,
     )
 
     heading_style = ParagraphStyle(
@@ -1120,9 +1121,9 @@ def build_pdf(
         parent=styles["Heading2"],
         fontName="Times-Bold",
         fontSize=12,
-        leading=15,
-        spaceBefore=6,
-        spaceAfter=6,
+        leading=14,
+        spaceBefore=4,
+        spaceAfter=5,
     )
 
     body_style = ParagraphStyle(
@@ -1130,7 +1131,7 @@ def build_pdf(
         parent=styles["BodyText"],
         fontName="Times-Roman",
         fontSize=10,
-        leading=13,
+        leading=12,
     )
 
     small_style = ParagraphStyle(
@@ -1138,10 +1139,14 @@ def build_pdf(
         parent=body_style,
         fontName="Times-Roman",
         fontSize=9,
-        leading=11,
+        leading=10.5,
     )
 
     story = []
+
+    # ========================================================
+    # TITLE
+    # ========================================================
 
     story.append(
         P(
@@ -1158,7 +1163,7 @@ def build_pdf(
     )
 
     story.append(
-        Spacer(1, 6)
+        Spacer(1, 5)
     )
 
 
@@ -1239,25 +1244,25 @@ def build_pdf(
                     "LEFTPADDING",
                     (0, 0),
                     (-1, -1),
-                    4,
+                    3,
                 ),
                 (
                     "RIGHTPADDING",
                     (0, 0),
                     (-1, -1),
-                    4,
+                    3,
                 ),
                 (
                     "TOPPADDING",
                     (0, 0),
                     (-1, -1),
-                    4,
+                    3,
                 ),
                 (
                     "BOTTOMPADDING",
                     (0, 0),
                     (-1, -1),
-                    4,
+                    3,
                 ),
             ]
         )
@@ -1266,7 +1271,7 @@ def build_pdf(
     story.append(table)
 
     story.append(
-        Spacer(1, 8)
+        Spacer(1, 6)
     )
 
 
@@ -1344,25 +1349,25 @@ def build_pdf(
                     "LEFTPADDING",
                     (0, 0),
                     (-1, -1),
-                    4,
+                    3,
                 ),
                 (
                     "RIGHTPADDING",
                     (0, 0),
                     (-1, -1),
-                    4,
+                    3,
                 ),
                 (
                     "TOPPADDING",
                     (0, 0),
                     (-1, -1),
-                    4,
+                    3,
                 ),
                 (
                     "BOTTOMPADDING",
                     (0, 0),
                     (-1, -1),
-                    4,
+                    3,
                 ),
             ]
         )
@@ -1370,8 +1375,12 @@ def build_pdf(
 
     story.append(table)
 
+    # ========================================================
+    # PAGE BREAK — SECTION 3 STARTS ON PAGE 2
+    # ========================================================
+
     story.append(
-        Spacer(1, 8)
+        PageBreak()
     )
 
 
@@ -1379,7 +1388,9 @@ def build_pdf(
     # SECTION 3 — LO Vs POs AND PSOs
     # ========================================================
 
-    story.append(
+    section3_content = []
+
+    section3_content.append(
         P(
             "3) LOs Vs POs and PSOs:",
             heading_style,
@@ -1466,17 +1477,41 @@ def build_pdf(
                     (-1, -1),
                     8,
                 ),
+                (
+                    "LEFTPADDING",
+                    (0, 0),
+                    (-1, -1),
+                    2,
+                ),
+                (
+                    "RIGHTPADDING",
+                    (0, 0),
+                    (-1, -1),
+                    2,
+                ),
+                (
+                    "TOPPADDING",
+                    (0, 0),
+                    (-1, -1),
+                    2.5,
+                ),
+                (
+                    "BOTTOMPADDING",
+                    (0, 0),
+                    (-1, -1),
+                    2.5,
+                ),
             ]
         )
     )
 
-    story.append(table)
+    section3_content.append(table)
 
-    story.append(
-        Spacer(1, 5)
+    section3_content.append(
+        Spacer(1, 4)
     )
 
-    story.append(
+    section3_content.append(
         P(
             "Scale: 3 = High    2 = Medium    "
             "1 = Low    - = No mapping",
@@ -1484,14 +1519,19 @@ def build_pdf(
         )
     )
 
+    # Keep entire Section 3 together
     story.append(
-        PageBreak()
+        KeepTogether(section3_content)
     )
 
 
     # ========================================================
     # SECTION 4 — SDGs Vs COMMUNITY SERVICE PROJECT COMPONENTS
     # ========================================================
+
+    story.append(
+        Spacer(1, 6)
+    )
 
     story.append(
         P(
@@ -1629,25 +1669,25 @@ def build_pdf(
                             "LEFTPADDING",
                             (0, 0),
                             (-1, -1),
-                            4,
+                            3,
                         ),
                         (
                             "RIGHTPADDING",
                             (0, 0),
                             (-1, -1),
-                            4,
+                            3,
                         ),
                         (
                             "TOPPADDING",
                             (0, 0),
                             (-1, -1),
-                            4,
+                            3,
                         ),
                         (
                             "BOTTOMPADDING",
                             (0, 0),
                             (-1, -1),
-                            4,
+                            3,
                         ),
                     ]
                 )
@@ -1656,7 +1696,7 @@ def build_pdf(
             story.append(table)
 
             story.append(
-                Spacer(1, 6)
+                Spacer(1, 5)
             )
 
             story.append(
