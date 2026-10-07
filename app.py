@@ -1698,6 +1698,11 @@ st.title(
     "📘 CSP Outcome Mapping Generator"
 )
 
+st.warning(
+    "⚠️ Got an error? Please wait a few seconds before trying again. "
+    "Temporary AI/Gemini server issues may occur."
+)
+
 st.caption(
     "Upload one Community Service Project book "
     "→ AI reads the actual book "
