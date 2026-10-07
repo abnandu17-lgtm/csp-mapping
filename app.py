@@ -1102,7 +1102,7 @@ def build_pdf(
     styles = getSampleStyleSheet()
 
     # ========================================================
-    # TIMES FONT
+    # INCREASED PDF TEXT SIZE
     # ========================================================
 
     title_style = ParagraphStyle(
@@ -1129,16 +1129,16 @@ def build_pdf(
         "CSPBody",
         parent=styles["BodyText"],
         fontName="Times-Roman",
-        fontSize=8.5,
-        leading=11,
+        fontSize=10,
+        leading=13,
     )
 
     small_style = ParagraphStyle(
         "CSPSmall",
         parent=body_style,
         fontName="Times-Roman",
-        fontSize=7,
-        leading=9,
+        fontSize=9,
+        leading=11,
     )
 
     story = []
@@ -1464,7 +1464,7 @@ def build_pdf(
                     "FONTSIZE",
                     (0, 0),
                     (-1, -1),
-                    6,
+                    8,
                 ),
             ]
         )
@@ -1623,7 +1623,7 @@ def build_pdf(
                             "FONTSIZE",
                             (0, 0),
                             (-1, -1),
-                            7,
+                            9,
                         ),
                         (
                             "LEFTPADDING",
