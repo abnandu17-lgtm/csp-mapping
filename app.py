@@ -1101,9 +1101,14 @@ def build_pdf(
 
     styles = getSampleStyleSheet()
 
+    # ========================================================
+    # TIMES FONT
+    # ========================================================
+
     title_style = ParagraphStyle(
         "CSPTitle",
         parent=styles["Title"],
+        fontName="Times-Bold",
         alignment=TA_CENTER,
         fontSize=15,
         leading=18,
@@ -1113,6 +1118,7 @@ def build_pdf(
     heading_style = ParagraphStyle(
         "CSPHeading",
         parent=styles["Heading2"],
+        fontName="Times-Bold",
         fontSize=12,
         leading=15,
         spaceBefore=6,
@@ -1122,6 +1128,7 @@ def build_pdf(
     body_style = ParagraphStyle(
         "CSPBody",
         parent=styles["BodyText"],
+        fontName="Times-Roman",
         fontSize=8.5,
         leading=11,
     )
@@ -1129,6 +1136,7 @@ def build_pdf(
     small_style = ParagraphStyle(
         "CSPSmall",
         parent=body_style,
+        fontName="Times-Roman",
         fontSize=7,
         leading=9,
     )
@@ -1225,7 +1233,7 @@ def build_pdf(
                     "FONTNAME",
                     (0, 0),
                     (-1, 0),
-                    "Helvetica-Bold",
+                    "Times-Bold",
                 ),
                 (
                     "LEFTPADDING",
@@ -1330,7 +1338,7 @@ def build_pdf(
                     "FONTNAME",
                     (0, 0),
                     (-1, 0),
-                    "Helvetica-Bold",
+                    "Times-Bold",
                 ),
                 (
                     "LEFTPADDING",
@@ -1450,7 +1458,7 @@ def build_pdf(
                     "FONTNAME",
                     (0, 0),
                     (-1, 0),
-                    "Helvetica-Bold",
+                    "Times-Bold",
                 ),
                 (
                     "FONTSIZE",
@@ -1533,10 +1541,6 @@ def build_pdf(
 
                 for number in matched_sdgs:
 
-                    # ONLY CHANGE:
-                    # If no SDG mapping exists for this component,
-                    # use 1 instead of 3.
-
                     row.append(
                         P(
                             values.get(
@@ -1595,7 +1599,7 @@ def build_pdf(
                             "FONTNAME",
                             (0, 0),
                             (-1, 0),
-                            "Helvetica-Bold",
+                            "Times-Bold",
                         ),
                         (
                             "ALIGN",
@@ -2117,10 +2121,6 @@ if uploaded:
             }
 
             for number in matched_sdgs:
-
-                # ONLY CHANGE:
-                # If no SDG mapping exists for this component,
-                # use 1 instead of 3.
 
                 row[
                     f"SDG {number}"
