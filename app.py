@@ -22,7 +22,6 @@ from reportlab.platypus import (
     Table,
     TableStyle,
     PageBreak,
-    KeepTogether,
 )
 
 
@@ -53,7 +52,7 @@ LEARNING_OBJECTIVES = [
 
 
 # ============================================================
-# FIXED EXPECTED LEARNING OUTCOMES
+# FIXED LEARNING OUTCOMES
 # ============================================================
 
 LEARNING_OUTCOMES = [
@@ -267,12 +266,14 @@ def extract_title(text):
 # ============================================================
 
 def get_gemini_api_key():
+
     key_file = (
         Path(".streamlit")
         / "gemini_api_key.txt"
     )
 
     if key_file.exists():
+
         key = key_file.read_text(
             encoding="utf-8"
         ).strip()
@@ -281,6 +282,7 @@ def get_gemini_api_key():
             return key
 
     try:
+
         key = str(
             st.secrets.get(
                 "GEMINI_API_KEY",
@@ -310,6 +312,7 @@ def get_gemini_api_key():
 
 
 def get_gemini_client():
+
     return genai.Client(
         api_key=get_gemini_api_key()
     )
@@ -320,6 +323,7 @@ def get_available_models(client):
     models = []
 
     try:
+
         for model in client.models.list():
 
             name = getattr(
@@ -358,9 +362,12 @@ def get_available_models(client):
                 ):
                     continue
 
-            models.append(clean_name)
+            models.append(
+                clean_name
+            )
 
     except Exception:
+
         models = []
 
     if not models:
@@ -454,6 +461,7 @@ def call_gemini_json(
                 )
 
                 if not result_text:
+
                     raise RuntimeError(
                         f"{model_name} returned "
                         "an empty response."
@@ -742,6 +750,7 @@ CANDIDATES:
 
             try:
                 page = int(page)
+
             except (
                 TypeError,
                 ValueError,
@@ -1091,13 +1100,17 @@ def build_pdf(
 
     buffer = io.BytesIO()
 
+    # --------------------------------------------------------
+    # COMPACT PAGE SETTINGS
+    # --------------------------------------------------------
+
     document = SimpleDocTemplate(
         buffer,
         pagesize=A4,
-        rightMargin=12 * mm,
-        leftMargin=12 * mm,
-        topMargin=10 * mm,
-        bottomMargin=10 * mm,
+        rightMargin=10 * mm,
+        leftMargin=10 * mm,
+        topMargin=8 * mm,
+        bottomMargin=8 * mm,
     )
 
     styles = getSampleStyleSheet()
@@ -1112,18 +1125,27 @@ def build_pdf(
         fontName="Times-Bold",
         alignment=TA_CENTER,
         fontSize=15,
-        leading=18,
-        spaceAfter=6,
+        leading=17,
+        spaceAfter=4,
+    )
+
+    project_style = ParagraphStyle(
+        "CSPProject",
+        parent=styles["BodyText"],
+        fontName="Times-Bold",
+        fontSize=9,
+        leading=11,
+        spaceAfter=3,
     )
 
     heading_style = ParagraphStyle(
         "CSPHeading",
         parent=styles["Heading2"],
         fontName="Times-Bold",
-        fontSize=12,
-        leading=14,
-        spaceBefore=4,
-        spaceAfter=5,
+        fontSize=11,
+        leading=13,
+        spaceBefore=3,
+        spaceAfter=4,
     )
 
     body_style = ParagraphStyle(
@@ -1138,32 +1160,61 @@ def build_pdf(
         "CSPSmall",
         parent=body_style,
         fontName="Times-Roman",
-        fontSize=9,
-        leading=10.5,
+        fontSize=8.5,
+        leading=9.8,
+    )
+
+    # Smaller style specifically for Section 3
+    mapping_style = ParagraphStyle(
+        "CSPMapping",
+        parent=body_style,
+        fontName="Times-Roman",
+        fontSize=7.5,
+        leading=8,
+        alignment=TA_CENTER,
+    )
+
+    mapping_header_style = ParagraphStyle(
+        "CSPMappingHeader",
+        parent=body_style,
+        fontName="Times-Bold",
+        fontSize=7.5,
+        leading=8,
+        alignment=TA_CENTER,
+    )
+
+    sdg_style = ParagraphStyle(
+        "CSPSDG",
+        parent=body_style,
+        fontName="Times-Roman",
+        fontSize=8,
+        leading=9,
+    )
+
+    sdg_header_style = ParagraphStyle(
+        "CSPSDGHeader",
+        parent=body_style,
+        fontName="Times-Bold",
+        fontSize=8,
+        leading=9,
+        alignment=TA_CENTER,
     )
 
     story = []
 
     # ========================================================
-    # TITLE
+    # MAIN TITLE
     # ========================================================
 
     story.append(
         P(
-            "CO-PO-PSO & WK-PO-PSO Mapping",
+            "COMMUNITY SERVICE PROJECT",
             title_style,
         )
     )
 
     story.append(
-        P(
-            project_title,
-            body_style,
-        )
-    )
-
-    story.append(
-        Spacer(1, 5)
+        Spacer(1, 2)
     )
 
 
@@ -1173,7 +1224,7 @@ def build_pdf(
 
     story.append(
         P(
-            "1) Learning Objectives:",
+            "Learning Objectives:",
             heading_style,
         )
     )
@@ -1200,8 +1251,8 @@ def build_pdf(
     table = Table(
         objective_data,
         colWidths=[
-            15 * mm,
-            164 * mm,
+            13 * mm,
+            167 * mm,
         ],
         repeatRows=1,
     )
@@ -1256,13 +1307,13 @@ def build_pdf(
                     "TOPPADDING",
                     (0, 0),
                     (-1, -1),
-                    3,
+                    2.5,
                 ),
                 (
                     "BOTTOMPADDING",
                     (0, 0),
                     (-1, -1),
-                    3,
+                    2.5,
                 ),
             ]
         )
@@ -1271,17 +1322,17 @@ def build_pdf(
     story.append(table)
 
     story.append(
-        Spacer(1, 6)
+        Spacer(1, 5)
     )
 
 
     # ========================================================
-    # SECTION 2 — EXPECTED LEARNING OUTCOMES
+    # SECTION 2 — LEARNING OUTCOMES
     # ========================================================
 
     story.append(
         P(
-            "2) Expected Learning Outcomes (LOs):",
+            "Learning Outcomes:",
             heading_style,
         )
     )
@@ -1289,7 +1340,10 @@ def build_pdf(
     outcome_data = [
         [
             P("LO", small_style),
-            P("Expected Learning Outcome", small_style),
+            P(
+                "Learning Outcome",
+                small_style,
+            ),
         ]
     ]
 
@@ -1306,7 +1360,7 @@ def build_pdf(
         outcome_data,
         colWidths=[
             18 * mm,
-            161 * mm,
+            162 * mm,
         ],
         repeatRows=1,
     )
@@ -1361,13 +1415,13 @@ def build_pdf(
                     "TOPPADDING",
                     (0, 0),
                     (-1, -1),
-                    3,
+                    2.5,
                 ),
                 (
                     "BOTTOMPADDING",
                     (0, 0),
                     (-1, -1),
-                    3,
+                    2.5,
                 ),
             ]
         )
@@ -1375,8 +1429,10 @@ def build_pdf(
 
     story.append(table)
 
+
     # ========================================================
-    # PAGE BREAK — SECTION 3 STARTS ON PAGE 2
+    # PAGE BREAK
+    # PAGE 2 STARTS HERE
     # ========================================================
 
     story.append(
@@ -1388,19 +1444,25 @@ def build_pdf(
     # SECTION 3 — LO Vs POs AND PSOs
     # ========================================================
 
-    section3_content = []
-
-    section3_content.append(
+    story.append(
         P(
-            "3) LOs Vs POs and PSOs:",
+            "LOs Vs POs and PSOs:",
             heading_style,
         )
     )
 
     section3_data = [
-        [P("LO", small_style)]
+        [
+            P(
+                "LO",
+                mapping_header_style,
+            )
+        ]
         + [
-            P(header, small_style)
+            P(
+                header,
+                mapping_header_style,
+            )
             for header in HEADERS
         ]
     ]
@@ -1420,9 +1482,17 @@ def build_pdf(
             )
 
         section3_data.append(
-            [P(lo, small_style)]
+            [
+                P(
+                    lo,
+                    mapping_header_style,
+                )
+            ]
             + [
-                P(value, small_style)
+                P(
+                    value,
+                    mapping_style,
+                )
                 for value in row
             ]
         )
@@ -1430,9 +1500,9 @@ def build_pdf(
     table = Table(
         section3_data,
         colWidths=[
-            15 * mm
+            14 * mm
         ] + [
-            12.1 * mm
+            11.85 * mm
         ] * 14,
         repeatRows=1,
     )
@@ -1466,62 +1536,45 @@ def build_pdf(
                     "MIDDLE",
                 ),
                 (
-                    "FONTNAME",
-                    (0, 0),
-                    (-1, 0),
-                    "Times-Bold",
-                ),
-                (
-                    "FONTSIZE",
-                    (0, 0),
-                    (-1, -1),
-                    8,
-                ),
-                (
                     "LEFTPADDING",
                     (0, 0),
                     (-1, -1),
-                    2,
+                    1.5,
                 ),
                 (
                     "RIGHTPADDING",
                     (0, 0),
                     (-1, -1),
-                    2,
+                    1.5,
                 ),
                 (
                     "TOPPADDING",
                     (0, 0),
                     (-1, -1),
-                    2.5,
+                    1.8,
                 ),
                 (
                     "BOTTOMPADDING",
                     (0, 0),
                     (-1, -1),
-                    2.5,
+                    1.8,
                 ),
             ]
         )
     )
 
-    section3_content.append(table)
+    story.append(table)
 
-    section3_content.append(
-        Spacer(1, 4)
+    story.append(
+        Spacer(1, 3)
     )
 
-    section3_content.append(
+    story.append(
         P(
             "Scale: 3 = High    2 = Medium    "
             "1 = Low    - = No mapping",
             small_style,
         )
-    )
-
-    # Keep entire Section 3 together
-    story.append(
-        KeepTogether(section3_content)
     )
 
 
@@ -1530,12 +1583,12 @@ def build_pdf(
     # ========================================================
 
     story.append(
-        Spacer(1, 6)
+        Spacer(1, 5)
     )
 
     story.append(
         P(
-            "4) SDGs Vs Community Service "
+            "SDGs Vs Community Service "
             "Project Components:",
             heading_style,
         )
@@ -1558,13 +1611,13 @@ def build_pdf(
                 [
                     P(
                         "Project Component",
-                        small_style,
+                        sdg_header_style,
                     )
                 ]
                 + [
                     P(
                         f"SDG {number}",
-                        small_style,
+                        sdg_header_style,
                     )
                     for number in matched_sdgs
                 ]
@@ -1575,7 +1628,7 @@ def build_pdf(
                 row = [
                     P(
                         component,
-                        small_style,
+                        sdg_style,
                     )
                 ]
 
@@ -1587,16 +1640,18 @@ def build_pdf(
                                 number,
                                 "1",
                             ),
-                            small_style,
+                            sdg_style,
                         )
                     )
 
-                section4_data.append(row)
+                section4_data.append(
+                    row
+                )
 
             component_width = 68 * mm
 
             available_width = (
-                A4[0] - 24 * mm
+                A4[0] - 20 * mm
             )
 
             remaining_width = (
@@ -1613,9 +1668,11 @@ def build_pdf(
                 section4_data,
                 colWidths=[
                     component_width
-                ] + [
+                ]
+                + [
                     sdg_width
-                ] * len(matched_sdgs),
+                ]
+                * len(matched_sdgs),
                 repeatRows=1,
             )
 
@@ -1660,34 +1717,28 @@ def build_pdf(
                             "MIDDLE",
                         ),
                         (
-                            "FONTSIZE",
-                            (0, 0),
-                            (-1, -1),
-                            9,
-                        ),
-                        (
                             "LEFTPADDING",
                             (0, 0),
                             (-1, -1),
-                            3,
+                            2.5,
                         ),
                         (
                             "RIGHTPADDING",
                             (0, 0),
                             (-1, -1),
-                            3,
+                            2.5,
                         ),
                         (
                             "TOPPADDING",
                             (0, 0),
                             (-1, -1),
-                            3,
+                            2.5,
                         ),
                         (
                             "BOTTOMPADDING",
                             (0, 0),
                             (-1, -1),
-                            3,
+                            2.5,
                         ),
                     ]
                 )
@@ -1696,7 +1747,7 @@ def build_pdf(
             story.append(table)
 
             story.append(
-                Spacer(1, 5)
+                Spacer(1, 3)
             )
 
             story.append(
@@ -1727,7 +1778,14 @@ def build_pdf(
             )
         )
 
-    document.build(story)
+
+    # ========================================================
+    # BUILD PDF
+    # ========================================================
+
+    document.build(
+        story
+    )
 
     buffer.seek(0)
 
@@ -1822,12 +1880,12 @@ if uploaded:
 
         st.stop()
 
-    project_title = (
-        analysis.get(
-            "project_title"
-        )
-        or extract_title(text)
-    )
+    # ========================================================
+    # IMPORTANT:
+    # The PDF title is ALWAYS COMMUNITY SERVICE PROJECT.
+    # ========================================================
+
+    project_title = "COMMUNITY SERVICE PROJECT"
 
     component_objects = (
         analysis.get(
@@ -2047,7 +2105,7 @@ if uploaded:
     # --------------------------------------------------------
 
     st.subheader(
-        "Section 1 — Learning Objectives"
+        "Learning Objectives"
     )
 
     objectives_preview = {
@@ -2073,7 +2131,7 @@ if uploaded:
     # --------------------------------------------------------
 
     st.subheader(
-        "Section 2 — Expected Learning Outcomes"
+        "Learning Outcomes"
     )
 
     outcomes_preview = {
@@ -2081,7 +2139,7 @@ if uploaded:
             item[0]
             for item in LEARNING_OUTCOMES
         ],
-        "Expected Learning Outcome": [
+        "Learning Outcome": [
             item[1]
             for item in LEARNING_OUTCOMES
         ],
@@ -2100,7 +2158,7 @@ if uploaded:
     # --------------------------------------------------------
 
     st.subheader(
-        "Section 3 — LO → PO/PSO Mapping"
+        "LO → PO/PSO Mapping"
     )
 
     section3_preview = {
@@ -2136,7 +2194,7 @@ if uploaded:
     # --------------------------------------------------------
 
     st.subheader(
-        "Section 4 — Project Components → SDGs"
+        "Project Components → SDGs"
     )
 
     matched_sdgs = sorted(
